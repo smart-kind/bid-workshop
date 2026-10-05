@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@bid-workshop/pi-sdk-driver": ["../../packages/pi-sdk-driver/src/index.ts"],
+      "@bid-workshop/pi-sdk-driver/custom-provider-types": [
+        "../../packages/pi-sdk-driver/src/custom-provider-types.ts"
+      ],
+      "@bid-workshop/pi-sdk-driver/dev-reload-probe": [
+        "../../packages/pi-sdk-driver/src/dev-reload-probe.ts"
+      ],
+      "@bid-workshop/catalogs": ["../../packages/catalogs/src/index.ts"],
+      "@bid-workshop/catalogs/dev-reload-probe": ["../../packages/catalogs/src/dev-reload-probe.ts"],
+      "@bid-workshop/session-driver": ["../../packages/session-driver/src/index.ts"],
+      "@bid-workshop/session-driver/runtime-types": [
+        "../../packages/session-driver/src/runtime-types.ts"
+      ],
+      "@bid-workshop/session-driver/dev-reload-probe": [
+        "../../packages/session-driver/src/dev-reload-probe.ts"
+      ],
+      "@bid-workshop/catalogs/node": ["../../packages/catalogs/src/node/index.ts"],
+      "@bid-workshop/catalogs/node/atomic-write": ["../../packages/catalogs/src/node/atomic-write.ts"]
+    }
+  }
+}

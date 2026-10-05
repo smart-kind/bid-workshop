@@ -1,0 +1,41 @@
+node_modules/
+*.tsbuildinfo
+.turbo/
+plans/
+dist/
+build/
+out/
+release/
+release-*/
+.cache/
+/.artifacts/
+/.pnpm-store/
+playwright-report/
+test-results/
+.claude/worktrees/
+.codex/worktrees/
+.worktrees/
+.DS_Store
+
+# Vite dev build artifacts
+*.js
+*.css
+!/apps/**/*.js
+!/apps/**/*.css
+!/packages/**/*.js
+!/packages/**/*.css
+!/extensions/**/*.js
+!/extensions/**/*.css
+index.html
+!apps/**/index.html
+
+# Vite hashed build output (anywhere)
+*-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9].js
+*-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9].css
+
+# Extension build output
+extensions/*/dist/
+
+# Vendored genoffice packages (symlinks to local genoffice workspace)
+# Run `node scripts/link-genoffice.mjs` to create these.
+vendor/

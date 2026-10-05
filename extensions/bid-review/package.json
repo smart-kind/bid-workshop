@@ -1,0 +1,16 @@
+{
+  "name": "@bid-workshop/extension-bid-review",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bid review extension for Bid Workshop",
+  "peerDependencies": {
+    "@earendil-works/chord": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@bid-workshop/extension-ui": "*"
+  },
+  "devDependencies": {
+    "esbuild": "*"
+  }
+}
