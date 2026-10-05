@@ -181,11 +181,12 @@ scanBody(...), buildBlankDocx(...), readSections(...), readSectionSettings(...),
   > "ids of comments whose range covers this run. Only set when the whole commentRangeStart..End pair lives inside the same paragraph"
 
   即锚定粒度是**段落内的 run 范围**，且**要求 commentRangeStart..End 落在同一段落内**。上一版说的「锚定到 block：指定 blockIndex / 锚定到 text span：指定文本范围」是对 **CLI / workspace-harness 工具层**的描述，不是引擎层的。
-- 写出锚点：`generate.ts:1711-1717` 生成 `<w:commentRangeStart/>` / `<w:commentRangeEnd/>` / `<w:commentReference/>`
+- 写出锚点：`generate.ts:2325-2345`（`runsXml`）按 run 的 `commentIds` 首末位置生成 `<w:commentRangeStart/>` / `<w:commentRangeEnd/>` / `<w:commentReference/>`
 
-**因此第 4 步的正确实现路径**是：构造 `CommentInfo[]` → 调 `saveDocx(parsed, blocks, { comments })`，而**不是**调 `doc_add_comment`。
+**因此第 4 步的实现路径是**：在目标 run 上挂 `commentIds`，同时把 `CommentInfo[]` 传给 `saveDocx(parsed, blocks, { comments })`，而**不是**调 `doc_add_comment`。
+这条路已实测跑通，见下面「2026-10-05 实测结果」。
 
-### workspace-harness 的工具（未引入，需先决策）
+### workspace-harness 的工具（需先解决 SDK 版本冲突）
 
 `doc_read_blocks`、`doc_read_comments`、`doc_insert_content`、`doc_replace_blocks`、`doc_apply_ops`、`doc_add_comment` 这 6 个名字**真实存在**，但在 `workspace-harness/src/tools/` 下，**不在 docx-engine/file-parse**。且如上所述是活编辑器工具。
 
@@ -207,13 +208,36 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 
 | 路线 | 做法 | 优点 | 代价 |
 |---|---|---|---|
-| A. 直接调引擎 | 引入 `docx-engine`，用 `parseDocx` / `saveDocx` | 无头、依赖最少、现在就能跑 | 批注是「全量重写」语义；块索引、run 锚定、结构遍历都得自己写 |
-| B. 复用 workspace-harness | 把 `workspace-harness` symlink 进 vendor | 工作空间/四区/只读约束/审查结论/批注工具全都现成；无 Electron 依赖 | 引入它自己的工作空间模型与会话模型，需与 pi-gui/@earendil-works/chord 的会话模型对齐；`doc_*` 是活编辑器工具，需同时接入编辑器 |
-| C. 子进程调 CLI | 起 `genoffice docs apply --ops` | 零集成、调试期最省事 | 依赖上游绝对路径、不在 PATH、每次 fork 进程、难做实时交互 |
+| A. 直接调引擎 | 引入 `docx-engine`，用 `parseDocx` / `saveDocx` | 无头、依赖最少、**已实测跑通**（见下） | 批注需自己把段落转成 generated 块并忠实带上格式 |
+| B. 复用 workspace-harness | 把 `workspace-harness` symlink 进 vendor | 工作空间/四区/只读约束/审查结论模型现成 | **当前 import 不进去**（SDK 版本冲突，见下）；`doc_*` 是活编辑器工具 |
+| C. 子进程调 CLI | 起 `genoffice docs apply --ops` | 零集成、调试期最省事 | 依赖上游绝对路径、不在 PATH、每次 fork 进程 |
 
-**建议**：第 2–4 步的无头管线走 **A**（最小依赖，先打通端到端）；同时**认真评估 B**，因为它已经把工作空间模型和审查结论模型都定义好了，自建等于重复实现；C 只作开发期验证手段。
+### 2026-10-05 实测结果
 
-但**这个取舍需要你明确拍板**，不要默认按 A 一路写下去——如果最终要 B，按 A 写的代码大部分要重做。
+**已完成的引入**：`workspace-harness` 及其依赖（`agent-core`、`ai-provider`、`xlsx-gateway`）已按既有方式 symlink 进 `vendor/genoffice/`（`scripts/link-genoffice.mjs` 的包清单已更新），pnpm 认作 workspace 项目，`extensions/bid-review` 已声明 `@genoffice/docx-engine` 与 `@genoffice/workspace-harness` 为依赖。
+
+**⚠️ 阻塞 1：SDK 版本冲突，`workspace-harness` 目前 import 不进来**
+
+- `workspace-harness` 锁 `@earendil-works/pi-agent-core@0.87.1` 与 `@earendil-works/pi-ai@0.87.1`
+- 本项目（pi-gui fork）用的是 **1.0.0**
+- 实测 `import '@genoffice/workspace-harness'` 失败：`does not provide an export named 'estimateContextTokens'`
+
+耦合范围是**有界的**——只有 `src/agent/` 下 5 个文件 import `@earendil-works`（`adapt.ts` / `convert.ts` / `effect-dispatch.ts` / `host.ts` / `stream-fn.ts`）。`src/workspace/*` 和 `src/tools/*`（含 `review_write_findings`、`doc_add_comment`）**都不依赖**它。
+
+但 `package.json` 的 `exports` 只映射了 `"."`，所以子路径 import 被 `ERR_PACKAGE_PATH_NOT_EXPORTED` 阻止。想只用工作空间/工具层、不用它的 agent host，需要选一条路：改上游 exports 映射 / 用 bundler alias 绕 / 把需要的模块复制进来 / 或者把它的 agent 层适配到 SDK 1.0.0（真实工作量）。
+
+**✅ 已验证通过：无头写批注可行，不需要 Tiptap 编辑器**
+
+实测往返（`buildBlankDocx` → 构造 generated 块 → `saveDocx` → 重新 `parseDocx`）：
+
+- 把批注 id 挂在 run 上：`{ kind: 'generated', block: { type: 'paragraph', runs: [{ text: '…', commentIds: ['1'] }] } }`
+- 同时传 `saveDocx(parsed, blocks, { comments: CommentInfo[] })`
+- 结果：`word/comments.xml` 生成、`commentRangeStart/End/commentReference` 锚点齐全、重新解析能读回两条批注及其作者/日期/paraId
+- 机制在 `generate.ts:2325-2345`（`runsXml` 按 `commentIds` 的首末 run 生成锚点）和 `patch.ts:912-970`（重写 comments.xml）
+
+**这意味着第 4 步不必依赖编辑器**。真正的工作量在**已有文档**上加批注时：目标段落要从 `{kind:'original', docxIndex}` 转成 `{kind:'generated', block}`，而转的时候必须忠实带上该段的格式（`rawPPr`、run 的 `rPr`、列表/书签等），否则那一段的排版会掉。上游正是用 Tiptap 编辑器模型 + `convert.pmDocToSavePlan()` 在做这个转换。
+
+**结论**：第 2、4 步可以走无头引擎路线，且批注链路已证明可行；但「把已有段落忠实转成 generated 块」这层需要自己写或复用上游的编辑器转换层——这是第 4 步的实际难点，不是批注 API 本身。
 
 ---
 
@@ -276,12 +300,22 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 
 ## 下一步工作（按顺序）
 
-### 第 0 步（新增）：拍板「复用 workspace-harness 还是自建」
+### 第 0 步：复用 workspace-harness（已拍板，但有前置阻塞）
 
-见 §漏掉的一层 和 §取用方式。**这步不做，第 2 步做出来的东西可能要重写。**
-同时决定工作空间目录结构是否采用上游的四区模型（`引用/资料/产出/意见`）。
+**已拍板：复用 `workspace-harness`**，不再自建工作空间模型与审查结论模型。
 
-另外建议先提交现有未提交的工作作为基线，避免丢失。
+**已完成**：包已 symlink 进 vendor、pnpm 已认作 workspace 项目、扩展已声明依赖。
+
+**待解决（不解决则第 2/3 步无法复用其工具层）**：
+
+1. **SDK 版本冲突**——`workspace-harness` 的 agent 层锁 pi-agent-core/pi-ai `0.87.1`，本项目是 `1.0.0`，包入口 import 直接失败。
+   它的 `workspace/*` 与 `tools/*` 不依赖该 SDK，但 `exports` 只映射 `"."`，子路径进不去。
+   需要选一条：改上游 exports 映射 / bundler alias 绕 / 复制所需模块 / 把其 agent 层适配到 1.0.0。
+2. **工作空间目录结构**——是否采用上游四区模型（`引用/资料/产出/意见`）与 `.workspace/manifest.json`。
+3. **`doc_*` 工具是活编辑器工具**——`doc_add_comment` 走 `docEditBridge`，需要第 5 步的编辑器联动到位才能用；
+   无头路径见「2026-10-05 实测结果」（已跑通，但需自己处理段落转换）。
+
+现有未提交工作已提交为基线（`36d94cf`）。
 
 ### 第 1 步：建立样例工作空间
 
@@ -410,10 +444,10 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 
 ## 修订记录
 
-**2026-10-05**（本次）：
+**2026-10-05（第一轮：对照源码更正）**：
 
 1. **修正「关键 genoffice API」一节**。原文把这些 API 归于 docx-engine / file-parse，实际：
-   - `doc_add_comment` 等 6 个来自未引入的 `workspace-harness`
+   - `doc_add_comment` 等 6 个来自 `workspace-harness`
    - `doc_reply_comment` / `doc_resolve_comment` / `doc_delete_comment` / `doc_get_context` **在整棵上游仓库中不存在**
    - 补上引擎真实 API：`parseDocx` / `saveDocx` + `CommentInfo[]` 全量重写语义 + run 级 `commentIds` 锚定
 2. **新增「漏掉的一层：workspace-harness」**。原文档完全未提这个包，而它是第 1–4 步的上游实现。
@@ -423,3 +457,12 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 6. **修正工作空间目录结构**为上游四区模型（`引用/资料/产出/意见`），原 `references/` 版本与上游不符。
 7. **标注未提交风险**：`extensions/bid-review/*`、`workspaces/` 等未提交且未跟踪。
 8. 补记 `pptx-engine`（vendor 里有、原表漏了）；修正「参考文档」的实际路径。
+
+**2026-10-05（第二轮：引入与实测）**：
+
+9. **引入 `workspace-harness`**：连同 `agent-core` / `ai-provider` / `xlsx-gateway` 一起 symlink 进 `vendor/genoffice/`，`scripts/link-genoffice.mjs` 包清单已更新，扩展已声明依赖。
+10. **记录阻塞**：`workspace-harness` 的 agent 层锁 pi-agent-core/pi-ai `0.87.1`，本项目 `1.0.0`，包入口 import 失败；耦合仅限 `src/agent/` 5 个文件，但 `exports` 只映射 `"."`，子路径不可用。
+11. **实测证明无头写批注可行**：`GeneratedBlock.runs[].commentIds` + `SaveOptions.comments` → `saveDocx` → 重新 `parseDocx` 能读回批注与锚点，不需要 Tiptap 编辑器。
+12. **第 0 步改为已拍板**（复用 workspace-harness）并列出三项待解决前置。
+
+
