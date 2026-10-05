@@ -216,15 +216,36 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 
 **已完成的引入**：`workspace-harness` 及其依赖（`agent-core`、`ai-provider`、`xlsx-gateway`）已按既有方式 symlink 进 `vendor/genoffice/`（`scripts/link-genoffice.mjs` 的包清单已更新），pnpm 认作 workspace 项目，`extensions/bid-review` 已声明 `@genoffice/docx-engine` 与 `@genoffice/workspace-harness` 为依赖。
 
-**⚠️ 阻塞 1：SDK 版本冲突，`workspace-harness` 目前 import 不进来**
+**✅ 已解决：SDK 版本冲突已绕开（改为子路径取用）**
 
-- `workspace-harness` 锁 `@earendil-works/pi-agent-core@0.87.1` 与 `@earendil-works/pi-ai@0.87.1`
-- 本项目（pi-gui fork）用的是 **1.0.0**
-- 实测 `import '@genoffice/workspace-harness'` 失败：`does not provide an export named 'estimateContextTokens'`
+- 冲突本身真实存在：`workspace-harness` 锁 `@earendil-works/pi-agent-core@0.87.1` 与 `@earendil-works/pi-ai@0.87.1`，
+  本项目（pi-gui fork）是 **1.0.0**。实测 `import '@genoffice/workspace-harness'`（包入口）失败：
+  `does not provide an export named 'estimateContextTokens'`
+- 耦合范围**有界**——只有 `src/agent/` 下 5 个文件 import `@earendil-works`
+  （`adapt.ts` / `convert.ts` / `effect-dispatch.ts` / `host.ts` / `stream-fn.ts`）。
+  `src/workspace/*` 与 `src/tools/*`（含 `review_write_findings`、`doc_add_comment`）**完全不依赖**它，只用 `typebox` 和 `node:fs/path`。
 
-耦合范围是**有界的**——只有 `src/agent/` 下 5 个文件 import `@earendil-works`（`adapt.ts` / `convert.ts` / `effect-dispatch.ts` / `host.ts` / `stream-fn.ts`）。`src/workspace/*` 和 `src/tools/*`（含 `review_write_findings`、`doc_add_comment`）**都不依赖**它。
+**解法（已实施）**：在上游 `packages/workspace-harness/package.json` 的 `exports` 里加子路径映射，把 agent 层排除在取用面之外：
 
-但 `package.json` 的 `exports` 只映射了 `"."`，所以子路径 import 被 `ERR_PACKAGE_PATH_NOT_EXPORTED` 阻止。想只用工作空间/工具层、不用它的 agent host，需要选一条路：改上游 exports 映射 / 用 bundler alias 绕 / 把需要的模块复制进来 / 或者把它的 agent 层适配到 SDK 1.0.0（真实工作量）。
+```json
+"exports": {
+  ".": "./src/index.ts",
+  "./workspace/*": "./src/workspace/*.ts",
+  "./tools/*": "./src/tools/*.ts",
+  "./tool/*": "./src/tool/*.ts"
+}
+```
+
+**已实测通过**（从本项目 import，esbuild 打包 242.9kB，对比拖入 agent 层的 2.2mB）：
+
+- `@genoffice/workspace-harness/workspace/manifest` → `createManifest` / `readManifest` / `writeManifest`，创建→写入→读回往返正确
+- `@genoffice/workspace-harness/workspace/zones` → 四区模型正确，`引用`/`资料` 判为只读、`产出`/`意见` 判为可写
+- `@genoffice/workspace-harness/tools/review` → 导出 `createReviewToolSet` 及 `REVIEW_SEVERITIES` / `REVIEW_VERDICTS` / `REVIEW_DISPOSITIONS`
+- 全程没有触发 pi-agent-core 的版本错误 → agent 层确实未被拖入
+
+> ⚠️ 这个 `exports` 改动目前**只在上游工作树里、尚未提交**（`/Users/david/orca/workspaces/gen-document/feat-workspace`，
+> 分支 `feat-workspace`）。上游仓库当时有大量在途未提交改动，所以没有替你提交。
+> 换机器或重新 clone 上游后，需要重新应用这个改动，否则子路径 import 会退回 `ERR_PACKAGE_PATH_NOT_EXPORTED`。
 
 **✅ 已验证通过：无头写批注可行，不需要 Tiptap 编辑器**
 
@@ -300,39 +321,49 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 
 ## 下一步工作（按顺序）
 
-### 第 0 步：复用 workspace-harness（已拍板，但有前置阻塞）
+### 第 0 步：复用 workspace-harness（已拍板，通道已打通）
 
 **已拍板：复用 `workspace-harness`**，不再自建工作空间模型与审查结论模型。
 
-**已完成**：包已 symlink 进 vendor、pnpm 已认作 workspace 项目、扩展已声明依赖。
+**已完成**：
 
-**待解决（不解决则第 2/3 步无法复用其工具层）**：
+1. 包已 symlink 进 vendor（连同 `agent-core` / `ai-provider` / `xlsx-gateway`），pnpm 认作 workspace 项目，扩展已声明依赖。
+2. **SDK 冲突已绕开**——上游 `exports` 加了子路径映射，可只取 `workspace/*` + `tools/*` 而不拖入锁在 0.87.1 的 agent 层。
+   已实测：manifest 往返、四区只读规则、`tools/review` 导出均正常。详见「2026-10-05 实测结果」。
+3. 现有未提交工作已提交为基线（`36d94cf`）。
 
-1. **SDK 版本冲突**——`workspace-harness` 的 agent 层锁 pi-agent-core/pi-ai `0.87.1`，本项目是 `1.0.0`，包入口 import 直接失败。
-   它的 `workspace/*` 与 `tools/*` 不依赖该 SDK，但 `exports` 只映射 `"."`，子路径进不去。
-   需要选一条：改上游 exports 映射 / bundler alias 绕 / 复制所需模块 / 把其 agent 层适配到 1.0.0。
+**待办**：
+
+1. ⚠️ 上游那个 `exports` 改动**尚未提交**（在上游 `feat-workspace` 分支的工作树里）。需要在上游仓库提交，否则换机器/重新 clone 后会失效。
 2. **工作空间目录结构**——是否采用上游四区模型（`引用/资料/产出/意见`）与 `.workspace/manifest.json`。
 3. **`doc_*` 工具是活编辑器工具**——`doc_add_comment` 走 `docEditBridge`，需要第 5 步的编辑器联动到位才能用；
    无头路径见「2026-10-05 实测结果」（已跑通，但需自己处理段落转换）。
-
-现有未提交工作已提交为基线（`36d94cf`）。
 
 ### 第 1 步：建立样例工作空间
 
 在 bid-workshop 里初始化一个样例工作空间，包含：
 
-1. **一份样例标书** .docx — 用 genoffice 的 docx-engine 生成一份假的投标书，包含典型章节：
-   - 封面（项目名称、投标方、日期）
-   - 目录
-   - 公司简介与资质
-   - 技术方案（含若干段落和表格）
-   - 报价表
-   - 服务承诺
-   - 故意埋入几个典型问题（缺少签章、报价计算错误、技术方案缺少关键章节等）
+1. **一份样例标书** .docx — **已决定：以真实投标材料为基底组装**，不再假造。
 
-   > 实现提示：用 `buildBlankDocx(...)` 造空白文档 + `saveDocx` 落盘。
-   > 现成范式可抄上游 `workspace-harness/src/workspace/demo.ts` 的 `provisionDemoWorkspace()`——它就是这么造演示用 .docx 的。
-   > 现有 `workspaces/bid-sample/sample-bid.json` 的内容可以直接搬成 .docx 的章节。
+   基底材料在同级 `bid-workshop/资料/`：
+
+   | 材料 | 用途 |
+   |---|---|
+   | `公司简介(智善科技).docx` | 公司简介 / 资质章节的正文来源 |
+   | `合同协议集20260930.xlsx` | 业绩、合同章节的表格来源 |
+   | `营业执照.jpg` | 证照扫描件（可作为图片插入 / 或仅作文本描述） |
+   | `ISO证书/`（质量、环境、职业健康安全三张 png） | 资质证明章节 |
+   | `财务报表/`（2021–2025 年度审计报告与财务报表 pdf） | 财务与商务章节 |
+   | `软件著作权登记证书/`（png） | 技术实力佐证 |
+
+   组装出的标书应包含典型章节：封面、目录、公司简介与资质、技术方案（含段落和表格）、报价表、服务承诺，
+   并**故意保留/埋入几个典型问题**（缺少签章、报价计算错误、技术方案缺关键章节等），让审查有东西可抓。
+
+   > 实现提示：用 `buildBlankDocx(...)` 造底 + `saveDocx` 落盘；插入图片走 `SaveBlock` 的 `{kind:'image'}`。
+   > 造演示 .docx 的现成范式可抄上游 `workspace-harness/src/workspace/demo.ts` 的 `provisionDemoWorkspace()`。
+   > 现有 `workspaces/bid-sample/sample-bid.json` 的章节文本可以并入。
+   >
+   > 注意：真实材料含营业执照、财务数据等敏感信息，**进仓库前需要确认是否可以提交**，或者只提交脱敏版本。
 
 2. **一份评审条件** — Markdown 或 JSON，列出审查维度和标准：
    ```markdown
@@ -461,8 +492,11 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 **2026-10-05（第二轮：引入与实测）**：
 
 9. **引入 `workspace-harness`**：连同 `agent-core` / `ai-provider` / `xlsx-gateway` 一起 symlink 进 `vendor/genoffice/`，`scripts/link-genoffice.mjs` 包清单已更新，扩展已声明依赖。
-10. **记录阻塞**：`workspace-harness` 的 agent 层锁 pi-agent-core/pi-ai `0.87.1`，本项目 `1.0.0`，包入口 import 失败；耦合仅限 `src/agent/` 5 个文件，但 `exports` 只映射 `"."`，子路径不可用。
+10. **解决 SDK 冲突**：上游 `exports` 加子路径映射（`./workspace/*`、`./tools/*`、`./tool/*`），绕开锁在 0.87.1 的 agent 层。
+    实测从本项目 import 成功（打包 242.9kB，对比拖入 agent 层的 2.2mB）：manifest 往返、四区只读规则、`tools/review` 导出均正常。
+    **该改动尚未在上游仓库提交。**
 11. **实测证明无头写批注可行**：`GeneratedBlock.runs[].commentIds` + `SaveOptions.comments` → `saveDocx` → 重新 `parseDocx` 能读回批注与锚点，不需要 Tiptap 编辑器。
-12. **第 0 步改为已拍板**（复用 workspace-harness）并列出三项待解决前置。
+12. **第 0 步改为通道已打通**；第 1 步样例标书改为**以真实投标材料为基底**（同级 `bid-workshop/资料/`）。
+
 
 
