@@ -8,7 +8,7 @@
     "@earendil-works/chord": "*",
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
-    "@bid-workshop/extension-ui": "*"
+    "@bid-workshop/extension-ui": "workspace:*"
   },
   "devDependencies": {
     "esbuild": "*"

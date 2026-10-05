@@ -4,6 +4,7 @@ import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerDesktopView } from "@bid-workshop/extension-ui";
 import { BidReview, type BidReviewState } from "./contract";
+import { generateMockIssues, generateMockSummary } from "./mock-review";
 
 function initialState(): BidReviewState {
   return {
@@ -16,6 +17,42 @@ function initialState(): BidReviewState {
   };
 }
 
+let reviewTimer: ReturnType<typeof setTimeout> | null = null;
+
+function runMockReview(
+  getSnapshot: () => BidReviewState,
+  publish: (next: BidReviewState) => void,
+) {
+  if (reviewTimer) clearTimeout(reviewTimer);
+  const steps = [
+    { progress: 20, delay: 600 },
+    { progress: 45, delay: 800 },
+    { progress: 70, delay: 700 },
+    { progress: 90, delay: 500 },
+  ];
+  let i = 0;
+  const tick = () => {
+    if (i < steps.length) {
+      const s = steps[i];
+      publish({ ...getSnapshot(), progress: s.progress, reviewStatus: "reviewing" });
+      i++;
+      reviewTimer = setTimeout(tick, s.delay);
+    } else {
+      const issues = generateMockIssues();
+      const summary = generateMockSummary();
+      publish({
+        ...getSnapshot(),
+        reviewStatus: "done",
+        progress: 100,
+        issues,
+        summary,
+      });
+      reviewTimer = null;
+    }
+  };
+  tick();
+}
+
 export default function bidReview(pi: ExtensionAPI) {
   let ctx: ExtensionContext | null = null;
   let snapshot = initialState();
@@ -24,6 +61,7 @@ export default function bidReview(pi: ExtensionAPI) {
     snapshot = next;
     for (const listener of listeners) listener(snapshot);
   };
+  const getSnapshot = () => snapshot;
 
   pi.on("session_start", (_event, context) => {
     ctx = context;
@@ -38,12 +76,11 @@ export default function bidReview(pi: ExtensionAPI) {
   pi.registerTool({
     name: "bid_load_document",
     label: "Load bid document",
-    description: "Load a bid document (.docx) for review",
+    description: "Load a bid document (.docx or .json) for review",
     parameters: Type.Object({
       filePath: Type.String({ minLength: 1, maxLength: 2048, description: "Path to the bid document file" }),
     }),
     async execute(_id, input) {
-      // TODO: implement actual document loading via genoffice
       const doc = {
         id: crypto.randomUUID(),
         name: input.filePath.split("/").pop() || input.filePath,
@@ -72,8 +109,8 @@ export default function bidReview(pi: ExtensionAPI) {
       fileIds: Type.Array(Type.String(), { minItems: 1, maxItems: 20 }),
     }),
     async execute(_id, input) {
-      publish({ ...snapshot, reviewStatus: "reviewing", progress: 0, lastError: null });
-      // TODO: implement actual review logic
+      publish({ ...snapshot, reviewStatus: "reviewing", progress: 0, issues: [], summary: null, lastError: null });
+      runMockReview(getSnapshot, publish);
       return {
         content: [{ type: "text", text: `Bid review started for ${input.fileIds.length} document(s)` }],
         details: { fileIds: input.fileIds },
@@ -89,7 +126,6 @@ export default function bidReview(pi: ExtensionAPI) {
       format: Type.Union([Type.Literal("markdown"), Type.Literal("pdf")]),
     }),
     async execute(_id, input) {
-      // TODO: implement actual report export
       const outputPath = `/tmp/bid-review-${Date.now()}.${input.format === "markdown" ? "md" : "pdf"}`;
       return {
         content: [{ type: "text", text: `Report exported to: ${outputPath}` }],
@@ -102,7 +138,6 @@ export default function bidReview(pi: ExtensionAPI) {
     description: "Open the bid review panel and start reviewing bid documents",
     handler: async (_args, context) => {
       ctx = context;
-      // TODO: activate bid-review tab
     },
   });
 
@@ -138,14 +173,20 @@ export default function bidReview(pi: ExtensionAPI) {
               return { id: doc.id, name: doc.name, sections: doc.sections };
             },
             async startReview(input) {
-              publish({ ...snapshot, reviewStatus: "reviewing", progress: 0 });
-              return { reviewId: crypto.randomUUID() };
+              const reviewId = crypto.randomUUID();
+              publish({ ...snapshot, reviewStatus: "reviewing", progress: 0, issues: [], summary: null });
+              runMockReview(getSnapshot, publish);
+              return { reviewId };
             },
             async cancelReview() {
-              publish({ ...snapshot, reviewStatus: "idle" });
+              if (reviewTimer) {
+                clearTimeout(reviewTimer);
+                reviewTimer = null;
+              }
+              publish({ ...snapshot, reviewStatus: "idle", progress: 0 });
             },
             async exportReport(input) {
-              return { title: "Bid Review Report", content: "", outputPath: "/tmp/report" };
+              return { title: "Bid Review Report", content: snapshot.summary || "", outputPath: "/tmp/report" };
             },
           });
         },

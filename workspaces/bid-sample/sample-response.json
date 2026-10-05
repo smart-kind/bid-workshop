@@ -1,0 +1,43 @@
+{
+  "name": "某建设集团投标文件",
+  "bidder": "某建设集团有限公司",
+  "bidAmount": 11500000,
+  "qualification": {
+    "level": "市政公用工程施工总承包一级",
+    "safetyLicense": true,
+    "similarProjects": [
+      { "name": "XX路道路改造工程", "year": 2024, "amount": 9800000 },
+      { "name": "YY大道改扩建工程", "year": 2023, "amount": 15200000 }
+    ],
+    "projectManager": {
+      "name": "张三",
+      "certification": "一级建造师（市政公用工程）",
+      "validProjects": 1
+    }
+  },
+  "technicalProposal": {
+    "schedule": "计划工期195日历天（超出招标要求180天）",
+    "keyMethods": "采用半幅施工半幅通车方案，夜间施工需另行审批",
+    "qualityTarget": "合格"
+  },
+  "commercialTerms": {
+    "unitPrices": {
+      "路基挖方": 35,
+      "路基填方": 42,
+      "水泥稳定碎石基层": 68,
+      "沥青混凝土面层": 95,
+      "HDPE排水管DN600": 280,
+      "检查井": 3200,
+      "交通标线": 45
+    },
+    "materialAdjustment": "材料价格波动超过±3%时调整（招标要求±5%）",
+    "penalty": "接受工期延误违约金0.1%/天，但要求上限为3%",
+    "warrantyDeposit": "要求质保金降为2%"
+  },
+  "deviations": [
+    "工期要求195天，超出招标要求180天",
+    "材料调价门槛要求±3%（招标为±5%）",
+    "违约金上限要求3%（招标为5%）",
+    "质保金比例要求2%（招标为3%）"
+  ]
+}

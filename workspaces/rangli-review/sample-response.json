@@ -1,0 +1,61 @@
+{
+  "name": "某市政工程有限公司投标文件",
+  "bidder": "某市政工程有限公司",
+  "bidAmount": 42380000,
+  "rangliPercent": 7.47,
+  "rangliAmount": 3422000,
+  "qualification": {
+    "level": "市政公用工程施工总承包特级",
+    "safetyLicense": true,
+    "validUntil": "2028-06-30",
+    "similarProjects": [
+      { "name": "XX经济开发区基础设施建设一期工程", "year": 2024, "amount": 38500000, "client": "XX经济开发区管委会" },
+      { "name": "YY高新技术园区配套道路工程", "year": 2023, "amount": 52000000, "client": "YY高新区建设局" },
+      { "name": "ZZ新城雨污分流改造工程", "year": 2023, "amount": 28000000, "client": "ZZ市住建局" }
+    ],
+    "projectManager": {
+      "name": "李建国",
+      "certification": "一级建造师（市政公用工程）",
+      "regNo": "皖134201820190356",
+      "validProjects": 0,
+      "experience": "15年市政工程施工经验"
+    }
+  },
+  "technicalProposal": {
+    "schedule": "计划工期230日历天（优于招标要求240天）",
+    "keyMethods": "道路采用全幅分段施工，雨污管网采用明挖与顶管结合施工，绿化工程与道路工程平行作业",
+    "qualityTarget": "优良",
+    "safetyMeasures": "设立专职安全员4名，实行三级安全教育，关键工序旁站监督"
+  },
+  "commercialTerms": {
+    "unitPrices": {
+      "路基挖方": 32,
+      "路基填方": 38,
+      "水泥稳定碎石基层": 62,
+      "SBS改性沥青面层AC-13C": 88,
+      "SBS改性沥青面层AC-20C": 82,
+      "路缘石": 45,
+      "HDPE排水管DN600": 265,
+      "HDPE排水管DN400": 185,
+      "检查井": 2800,
+      "雨水口": 1500,
+      "乔木种植": 680,
+      "灌木种植": 85,
+      "草坪铺设": 38
+    },
+    "materialAdjustment": "接受±5%调价门槛",
+    "penalty": "接受工期延误违约金0.1%/天，上限5%",
+    "warrantyDeposit": "接受质保金3%",
+    "rangliStatement": "我司承诺在中标控制价基础上让利7.47%，让利金额342.2万元，已计入投标总价"
+  },
+  "deviations": [
+    "工期230天（优于招标要求240天，提前10天）",
+    "让利比例7.47%（高于招标最低要求3%）",
+    "项目经理当前无在建工程，可立即到岗"
+  ],
+  "riskFactors": [
+    "让利比例较高（7.47%），需关注成本管控风险",
+    "HDPE排水管DN600单价265元/m，低于同期市场信息价约280-310元/m，需核实是否合理",
+    "沥青面层AC-13C报价88元/㎡，市场信息价约95-110元/㎡，偏低约6-20%"
+  ]
+}

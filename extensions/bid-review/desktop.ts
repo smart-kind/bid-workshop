@@ -1,6 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { DesktopViewContext } from "@bid-workshop/extension-ui/browser";
-import { BidReview, type BidReviewState } from "./contract";
+import { BidReview, type BidReviewState, type BidIssue } from "./contract";
 
 export async function mount(
   root: HTMLElement,
@@ -10,7 +10,10 @@ export async function mount(
   const style = doc.createElement("style");
   style.textContent = `
     .bid-view{font:13px/1.5 ui-sans-serif,system-ui,sans-serif;color:var(--fg);background:var(--bg);min-height:100%;padding:16px;box-sizing:border-box;overflow-wrap:anywhere}
-    .bid-view *{box-sizing:border-box}.bid-view h2{font-size:15px;margin:0 0 4px;font-weight:600}.bid-view p{margin:0 0 12px}.bid-meta{font-size:12px;opacity:.65}
+    .bid-view *{box-sizing:border-box}
+    .bid-view h2{font-size:15px;margin:0 0 4px;font-weight:600}
+    .bid-view p{margin:0 0 12px}
+    .bid-meta{font-size:12px;opacity:.65}
     .bid-actions{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
     .bid-view button{font:inherit;border:1px solid color-mix(in srgb,var(--fg) 18%,transparent);border-radius:6px;background:transparent;color:inherit;padding:6px 10px;cursor:pointer}
     .bid-view button:hover:not(:disabled){background:color-mix(in srgb,var(--fg) 7%,transparent)}
@@ -18,10 +21,34 @@ export async function mount(
     .bid-view button:disabled{opacity:.4;cursor:default}
     .bid-view .primary{background:var(--fg);color:var(--bg);border-color:var(--fg)}
     .bid-notice{padding:10px 12px;border:1px solid color-mix(in srgb,var(--fg) 18%,transparent);border-radius:6px;font-size:12px;margin:12px 0}
+    .bid-progress{margin:16px 0}
+    .bid-progress-bar{height:6px;background:color-mix(in srgb,var(--fg) 10%,transparent);border-radius:3px;overflow:hidden}
+    .bid-progress-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s ease}
+    .bid-progress-text{font-size:11px;opacity:.6;margin-top:4px}
+    .bid-summary{padding:12px;border:1px solid color-mix(in srgb,var(--fg) 14%,transparent);border-radius:8px;margin:12px 0;font-size:12px;white-space:pre-wrap;line-height:1.6;background:color-mix(in srgb,var(--fg) 2%,transparent)}
+    .bid-stats{display:flex;gap:12px;margin:12px 0}
+    .bid-stat{padding:8px 12px;border-radius:6px;font-size:12px;font-weight:500}
+    .bid-stat.critical{background:rgba(213,75,75,.12);color:#d54b4b}
+    .bid-stat.warning{background:rgba(197,139,22,.12);color:#c58b16}
+    .bid-stat.info{background:rgba(80,140,220,.12);color:#508cdc}
+    .bid-filters{display:flex;gap:6px;margin:12px 0;flex-wrap:wrap}
+    .bid-filter{font-size:11px;padding:3px 8px;border-radius:4px;cursor:pointer;border:1px solid color-mix(in srgb,var(--fg) 15%,transparent);background:transparent;color:inherit;opacity:.7}
+    .bid-filter:hover{opacity:1}
+    .bid-filter.active{background:var(--fg);color:var(--bg);opacity:1;border-color:var(--fg)}
     .bid-issue{padding:12px 0;border-top:1px solid color-mix(in srgb,var(--fg) 14%,transparent)}
-    .bid-issue h3{font-size:13px;margin:0 0 4px}.bid-issue p{font-size:12px;margin:0 0 4px}
-    .severity-critical{color:#d54b4b}.severity-warning{color:#c58b16}.severity-info{color:var(--accent)}
+    .bid-issue h3{font-size:13px;margin:0 0 4px}
+    .bid-issue p{font-size:12px;margin:0 0 4px}
+    .bid-issue .bid-location{font-size:11px;opacity:.55;margin-top:4px}
+    .severity-critical{color:#d54b4b}
+    .severity-warning{color:#c58b16}
+    .severity-info{color:#508cdc}
+    .bid-badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:3px;margin-right:4px;font-weight:500}
+    .bid-badge.critical{background:rgba(213,75,75,.15);color:#d54b4b}
+    .bid-badge.warning{background:rgba(197,139,22,.15);color:#c58b16}
+    .bid-badge.info{background:rgba(80,140,220,.15);color:#508cdc}
+    .bid-category{font-size:11px;opacity:.6;margin-left:6px}
   `;
+
   const view = doc.createElement("section");
   view.className = "bid-view";
   view.style.setProperty("--bg", host.theme.background);
@@ -32,6 +59,13 @@ export async function mount(
 
   let active = true;
   let hydrated = false;
+  let severityFilter: string | null = null;
+  let categoryFilter: string | null = null;
+
+  const SAMPLE_FILES = [
+    { name: "sample-bid.json", label: "招标文件 — 某市政道路改造工程" },
+    { name: "sample-response.json", label: "投标文件 — 某建设集团有限公司" },
+  ];
 
   const binding = host.services.open({
     services: [BidReview],
@@ -48,12 +82,24 @@ export async function mount(
     view.appendChild(p);
   }
 
+  function getWorkspacePath(): string | null {
+    try {
+      const url = new URL(window.location.href);
+      return url.searchParams.get("cwd") || null;
+    } catch { return null; }
+  }
+
+  function loadSampleFile(filename: string) {
+    const cwd = getWorkspacePath();
+    const filePath = cwd ? `${cwd}/${filename}` : filename;
+    service.loadDocument({ filePath }, BACKGROUND_CONTEXT);
+  }
+
   function render() {
     if (!active || host.signal.aborted) return;
     const state: BidReviewState | undefined = hydrated ? service.state.value : undefined;
     view.replaceChildren();
 
-    // Header
     const h2 = doc.createElement("h2");
     h2.textContent = "标书审查";
     view.appendChild(h2);
@@ -66,31 +112,53 @@ export async function mount(
       return;
     }
 
-    // File list
-    if (state.loadedFiles.length > 0) {
+    // File loading section
+    if (state.loadedFiles.length === 0) {
       const meta = doc.createElement("p");
-      meta.className = "bid-meta";
-      meta.textContent = `已加载 ${state.loadedFiles.length} 份标书文件`;
-      view.appendChild(meta);
-    } else {
-      const meta = doc.createElement("p");
-      meta.textContent = "请加载招标文件（.docx 格式）开始审查";
+      meta.textContent = "加载样例文件开始审查演示";
       meta.className = "bid-meta";
       view.appendChild(meta);
+
+      const actions = doc.createElement("div");
+      actions.className = "bid-actions";
+
+      for (const f of SAMPLE_FILES) {
+        const btn = doc.createElement("button");
+        btn.textContent = f.label;
+        btn.addEventListener("click", () => loadSampleFile(f.name));
+        actions.appendChild(btn);
+      }
+
+      const allBtn = doc.createElement("button");
+      allBtn.textContent = "加载全部";
+      allBtn.className = "primary";
+      allBtn.addEventListener("click", () => {
+        for (const f of SAMPLE_FILES) loadSampleFile(f.name);
+      });
+      actions.appendChild(allBtn);
+
+      view.appendChild(actions);
+      return;
     }
+
+    // File list
+    const meta = doc.createElement("p");
+    meta.className = "bid-meta";
+    meta.textContent = `已加载 ${state.loadedFiles.length} 份文件：${state.loadedFiles.map((f) => f.name).join("、")}`;
+    view.appendChild(meta);
 
     // Actions
     const actions = doc.createElement("div");
     actions.className = "bid-actions";
 
-    const loadBtn = doc.createElement("button");
-    loadBtn.textContent = "加载标书";
-    loadBtn.disabled = state.reviewStatus === "reviewing";
-    loadBtn.addEventListener("click", () => {
-      // TODO: use host file picker
-      service.loadDocument({ filePath: "/path/to/bid.docx" }, BACKGROUND_CONTEXT);
+    const loadMoreBtn = doc.createElement("button");
+    loadMoreBtn.textContent = "加载标书";
+    loadMoreBtn.disabled = state.reviewStatus === "reviewing";
+    loadMoreBtn.addEventListener("click", () => {
+      const remaining = SAMPLE_FILES.filter((f) => !state.loadedFiles.some((lf) => lf.name === f.name));
+      if (remaining.length > 0) loadSampleFile(remaining[0].name);
     });
-    actions.appendChild(loadBtn);
+    actions.appendChild(loadMoreBtn);
 
     const reviewBtn = doc.createElement("button");
     reviewBtn.textContent = state.reviewStatus === "reviewing" ? "审查中…" : "开始审查";
@@ -102,6 +170,13 @@ export async function mount(
     });
     actions.appendChild(reviewBtn);
 
+    if (state.reviewStatus === "reviewing") {
+      const cancelBtn = doc.createElement("button");
+      cancelBtn.textContent = "取消";
+      cancelBtn.addEventListener("click", () => service.cancelReview({}, BACKGROUND_CONTEXT));
+      actions.appendChild(cancelBtn);
+    }
+
     const exportBtn = doc.createElement("button");
     exportBtn.textContent = "导出报告";
     exportBtn.disabled = state.reviewStatus !== "done" || state.issues.length === 0;
@@ -112,7 +187,24 @@ export async function mount(
 
     view.appendChild(actions);
 
-    // Error display
+    // Progress
+    if (state.reviewStatus === "reviewing") {
+      const progressDiv = doc.createElement("div");
+      progressDiv.className = "bid-progress";
+      const bar = doc.createElement("div");
+      bar.className = "bid-progress-bar";
+      const fill = doc.createElement("div");
+      fill.className = "bid-progress-fill";
+      fill.style.width = `${state.progress}%`;
+      bar.appendChild(fill);
+      const text = doc.createElement("div");
+      text.className = "bid-progress-text";
+      text.textContent = `审查进度：${state.progress}%`;
+      progressDiv.append(bar, text);
+      view.appendChild(progressDiv);
+    }
+
+    // Error
     if (state.lastError) {
       const err = doc.createElement("p");
       err.textContent = state.lastError;
@@ -120,39 +212,84 @@ export async function mount(
       view.appendChild(err);
     }
 
-    // Issues
+    // Summary + stats
     if (state.reviewStatus === "done" && state.issues.length > 0) {
+      if (state.summary) {
+        const summaryDiv = doc.createElement("div");
+        summaryDiv.className = "bid-summary";
+        summaryDiv.textContent = state.summary;
+        view.appendChild(summaryDiv);
+      }
+
+      // Stats by severity
+      const stats = doc.createElement("div");
+      stats.className = "bid-stats";
+      const counts = { critical: 0, warning: 0, info: 0 };
+      for (const issue of state.issues) counts[issue.severity]++;
+
+      for (const [sev, count] of Object.entries(counts)) {
+        const stat = doc.createElement("div");
+        stat.className = `bid-stat ${sev}`;
+        const labels: Record<string, string> = { critical: "严重", warning: "警告", info: "提示" };
+        stat.textContent = `${labels[sev]}: ${count}`;
+        stats.appendChild(stat);
+      }
+      view.appendChild(stats);
+
+      // Category stats
+      const catCounts: Record<string, number> = {};
       for (const issue of state.issues) {
-        const div = doc.createElement("div");
-        div.className = "bid-issue";
+        const cat = issue.category || "other";
+        catCounts[cat] = (catCounts[cat] || 0) + 1;
+      }
+      const catLabels: Record<string, string> = {
+        qualification: "资质", pricing: "报价", technical: "技术", legal: "法律条款", format: "格式",
+      };
 
-        const h3 = doc.createElement("h3");
-        const severitySpan = doc.createElement("span");
-        severitySpan.className = `severity-${issue.severity}`;
-        severitySpan.textContent = `[${issue.severity}] `;
-        h3.appendChild(severitySpan);
-        h3.appendChild(doc.createTextNode(issue.title));
-        div.appendChild(h3);
+      // Filters
+      const filters = doc.createElement("div");
+      filters.className = "bid-filters";
 
-        if (issue.category) {
-          const cat = doc.createElement("p");
-          cat.className = "bid-meta";
-          cat.textContent = issue.category;
-          div.appendChild(cat);
-        }
+      const allFilter = doc.createElement("button");
+      allFilter.className = `bid-filter ${!severityFilter ? "active" : ""}`;
+      allFilter.textContent = "全部";
+      allFilter.addEventListener("click", () => { severityFilter = null; categoryFilter = null; render(); });
+      filters.appendChild(allFilter);
 
-        const desc = doc.createElement("p");
-        desc.textContent = issue.description;
-        div.appendChild(desc);
+      for (const sev of ["critical", "warning", "info"]) {
+        const btn = doc.createElement("button");
+        const labels: Record<string, string> = { critical: "严重", warning: "警告", info: "提示" };
+        btn.className = `bid-filter ${severityFilter === sev ? "active" : ""}`;
+        btn.textContent = `${labels[sev]} (${counts[sev]})`;
+        btn.addEventListener("click", () => {
+          severityFilter = severityFilter === sev ? null : sev;
+          categoryFilter = null;
+          render();
+        });
+        filters.appendChild(btn);
+      }
 
-        if (issue.suggestion) {
-          const sug = doc.createElement("p");
-          sug.className = "bid-meta";
-          sug.textContent = `建议: ${issue.suggestion}`;
-          div.appendChild(sug);
-        }
+      for (const [cat, count] of Object.entries(catCounts)) {
+        const btn = doc.createElement("button");
+        btn.className = `bid-filter ${categoryFilter === cat ? "active" : ""}`;
+        btn.textContent = `${catLabels[cat] || cat} (${count})`;
+        btn.addEventListener("click", () => {
+          categoryFilter = categoryFilter === cat ? null : cat;
+          severityFilter = null;
+          render();
+        });
+        filters.appendChild(btn);
+      }
 
-        view.appendChild(div);
+      view.appendChild(filters);
+
+      // Filtered issues
+      let filtered = state.issues;
+      if (severityFilter) filtered = filtered.filter((i) => i.severity === severityFilter);
+      if (categoryFilter) filtered = filtered.filter((i) => i.category === categoryFilter);
+
+      for (const issue of filtered) {
+        view.appendChild(renderIssue(issue));
       }
     } else if (state.reviewStatus === "done") {
       const p = doc.createElement("p");
@@ -160,6 +297,54 @@ export async function mount(
       p.className = "bid-meta";
       view.appendChild(p);
     }
+  }
+
+  function renderIssue(issue: BidIssue): HTMLElement {
+    const div = doc.createElement("div");
+    div.className = "bid-issue";
+
+    const h3 = doc.createElement("h3");
+    const badge = doc.createElement("span");
+    badge.className = `bid-badge ${issue.severity}`;
+    const sevLabels: Record<string, string> = { critical: "严重", warning: "警告", info: "提示" };
+    badge.textContent = sevLabels[issue.severity] || issue.severity;
+    h3.appendChild(badge);
+
+    const catLabels: Record<string, string> = {
+      qualification: "资质", pricing: "报价", technical: "技术", legal: "法律条款", format: "格式",
+    };
+    if (issue.category) {
+      const cat = doc.createElement("span");
+      cat.className = "bid-category";
+      cat.textContent = catLabels[issue.category] || issue.category;
+      h3.appendChild(cat);
+    }
+
+    h3.appendChild(doc.createTextNode(" " + issue.title));
+    div.appendChild(h3);
+
+    const desc = doc.createElement("p");
+    desc.textContent = issue.description;
+    div.appendChild(desc);
+
+    if (issue.suggestion) {
+      const sug = doc.createElement("p");
+      sug.className = "bid-meta";
+      sug.textContent = `💡 ${issue.suggestion}`;
+      div.appendChild(sug);
+    }
+
+    if (issue.location) {
+      const loc = doc.createElement("div");
+      loc.className = "bid-location";
+      const parts: string[] = [];
+      if (issue.location.section) parts.push(issue.location.section);
+      if (issue.location.page) parts.push(`p.${issue.location.page}`);
+      if (parts.length > 0) loc.textContent = `📍 ${parts.join(" · ")}`;
+      div.appendChild(loc);
+    }
+
+    return div;
   }
 
   let unsubscribe = () => {};
