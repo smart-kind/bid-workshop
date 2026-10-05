@@ -10,6 +10,10 @@
     "@earendil-works/pi-coding-agent": "*",
     "@bid-workshop/extension-ui": "workspace:*"
   },
+  "dependencies": {
+    "@genoffice/docx-engine": "workspace:*",
+    "@genoffice/workspace-harness": "workspace:*"
+  },
   "devDependencies": {
     "esbuild": "*"
   }

@@ -359,6 +359,12 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: '*'
         version: 1.0.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.7.3)(ws@8.21.3)(zod@4.3.6)
+      '@genoffice/docx-engine':
+        specifier: workspace:*
+        version: link:../../vendor/genoffice/docx-engine
+      '@genoffice/workspace-harness':
+        specifier: workspace:*
+        version: link:../../vendor/genoffice/workspace-harness
     devDependencies:
       esbuild:
         specifier: '*'

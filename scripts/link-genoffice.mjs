@@ -26,6 +26,13 @@ const packages = [
   "html2docx",
   "i18n",
   "pptx-engine",
+  // workspace-harness carries the workspace model, the document/comment tools
+  // and the review-findings tool this project builds on; agent-core, ai-provider
+  // and xlsx-gateway are its genoffice dependencies.
+  "agent-core",
+  "ai-provider",
+  "workspace-harness",
+  "xlsx-gateway",
 ];
 
 const vendorDir = join(root, "vendor", "genoffice");
