@@ -1,11 +1,8 @@
 import type { Model } from '@earendil-works/pi-ai'
-import {
-  Agent,
-  estimateContextTokens,
-  estimateTokens,
-  type AgentEvent,
-  type AgentMessage,
-} from '@earendil-works/pi-agent-core'
+import { Agent, type AgentEvent, type AgentMessage } from '@earendil-works/pi-agent-core'
+// 1.0.0 moved token estimation out of pi-agent-core and made it per-message, so
+// the transcript total is summed here instead of read off one call.
+import { estimateTokens } from '@earendil-works/pi-coding-agent'
 import { getProviderAdapter } from '@genoffice/ai-provider'
 import type { AnyHarnessTool, HarnessEvent, ToolContext } from '../tool/types.js'
 import { toAgentTools } from './adapt.js'
@@ -166,7 +163,8 @@ function protocolOf(routing: ProviderRouting): string {
  * rather than a structural decision.
  */
 export function pruneTranscript(messages: AgentMessage[], budgetTokens: number): AgentMessage[] {
-  if (estimateContextTokens(messages).tokens <= budgetTokens) return messages
+  const used = messages.reduce((sum, message) => sum + estimateTokens(message), 0)
+  if (used <= budgetTokens) return messages
 
   const head = messages.filter((message) => message.role === 'system')
   const rest = messages.filter((message) => message.role !== 'system')
