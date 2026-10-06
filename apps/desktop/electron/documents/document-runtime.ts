@@ -7,11 +7,14 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import {
+  addComments,
   createDocument as buildDocument,
   insertParagraph as insertParagraphInto,
   readDocumentBlocks,
+  readDocumentComments,
   replaceParagraphText as replaceBlockText,
   type DocumentBlockRef,
+  type DocumentComment,
   type DocumentParagraph,
 } from "@bid-workshop/document-service";
 import { resolveWorkspacePath } from "../platform/files/workspace-paths";
@@ -50,7 +53,7 @@ type DocumentOperation =
   | { readonly kind: "replace"; readonly blockIndex: number; readonly text: string };
 
 export function createDocumentRuntimeTools(): ToolDefinition<any, DocumentToolDetails>[] {
-  return [createReadTool(), createCreateTool(), createUpdateTool()];
+  return [createReadTool(), createCreateTool(), createUpdateTool(), createCommentTool()];
 }
 
 export function createDocumentRuntimeExtension(): ExtensionFactory {
@@ -242,6 +245,97 @@ function createUpdateTool(): ToolDefinition<any, DocumentToolDetails> {
       }
     },
   };
+}
+
+function createCommentTool(): ToolDefinition<any, DocumentToolDetails> {
+  const toolName = "comment_docx";
+  return {
+    name: toolName,
+    label: "Comment on a Word document",
+    description:
+      "Add comments to a .docx in the thread's folder, anchored to a named phrase or to a whole block. Existing comments are kept.",
+    promptSnippet: "comment_docx: add a comment to a block of a .docx.",
+    promptGuidelines: [
+      "Use read_docx first: blockIndex is one of the indexes it returned.",
+      "Set quote to anchor the comment on a phrase; leave it out to comment the whole block.",
+    ],
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "The .docx, relative to the thread's folder." },
+        comments: {
+          type: "array",
+          description: "Comments to add, in order.",
+          items: {
+            type: "object",
+            properties: {
+              blockIndex: { type: "number", description: "The block to attach it to." },
+              text: { type: "string", description: "The comment itself." },
+              quote: {
+                type: "string",
+                description: "Anchor on this text inside the block; omit for the whole block.",
+              },
+              author: { type: "string", description: "Who the comment is from." },
+            },
+            required: ["blockIndex", "text"],
+          },
+        },
+      },
+      required: ["path", "comments"],
+    },
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const input = commentParams(params);
+      if (!input) {
+        return failure(toolName, "comment_docx requires a path and a comments array");
+      }
+      try {
+        const path = documentPath(ctx, input.path);
+        const bytes = await addComments(new Uint8Array(await readFile(path)), input.comments);
+        await writeFile(path, bytes);
+        const comments = await readDocumentComments(bytes);
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                `The document now carries ${comments.length} comment(s):\n` +
+                comments
+                  .map((comment) => `[${comment.id}] ${comment.author}: ${comment.text}`)
+                  .join("\n"),
+            },
+          ],
+          details: { action: toolName, path },
+        };
+      } catch (error) {
+        return failure(toolName, messageOf(error));
+      }
+    },
+  };
+}
+
+function commentParams(
+  raw: unknown,
+): { readonly path: string; readonly comments: DocumentComment[] } | undefined {
+  const path = readParams(raw)?.path;
+  if (!path || typeof raw !== "object" || raw === null || !("comments" in raw)) return undefined;
+  const comments = (raw as { comments?: unknown }).comments;
+  if (!Array.isArray(comments) || comments.length === 0) return undefined;
+  const parsed: DocumentComment[] = [];
+  for (const entry of comments) {
+    if (typeof entry !== "object" || entry === null) return undefined;
+    const { blockIndex, text } = entry as { blockIndex?: unknown; text?: unknown };
+    if (typeof blockIndex !== "number" || !Number.isInteger(blockIndex)) return undefined;
+    if (typeof text !== "string" || text === "") return undefined;
+    const quote = (entry as { quote?: unknown }).quote;
+    const author = (entry as { author?: unknown }).author;
+    parsed.push({
+      blockIndex,
+      text,
+      ...(typeof quote === "string" && quote !== "" ? { quote } : {}),
+      ...(typeof author === "string" && author !== "" ? { author } : {}),
+    });
+  }
+  return { path, comments: parsed };
 }
 
 function paragraphOf(operation: {

@@ -1,8 +1,11 @@
-import { readFile } from "node:fs/promises";
-import { copyFile } from "node:fs/promises";
+import { copyFile, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { readDocumentBlocks, readDocumentText } from "@bid-workshop/document-service";
+import {
+  readDocumentBlocks,
+  readDocumentComments,
+  readDocumentText,
+} from "@bid-workshop/document-service";
 import {
   createNamedThread,
   getRealAuthConfig,
@@ -96,6 +99,26 @@ test("a real model reads, generates and changes documents in the thread's folder
     await expect
       .poll(() => documentText(sourcePath), { timeout: TURN_TIMEOUT })
       .toContain(EDIT_PROBE);
+
+    // --- and comment on the file ---
+    await prompt(
+      window,
+      `用 comment_docx 在 ${SOURCE_DOCUMENT} 的第 1 个块上加一条批注「ShellModelCommentProbe2026」。` +
+        `完成后只回复 DONE。`,
+    );
+    await expect
+      .poll(
+        async () => {
+          try {
+            const comments = await readDocumentComments(new Uint8Array(await readFile(sourcePath)));
+            return comments.map((comment) => comment.text).join(" | ");
+          } catch {
+            return "";
+          }
+        },
+        { timeout: TURN_TIMEOUT },
+      )
+      .toContain("ShellModelCommentProbe2026");
   } finally {
     await harness.close();
   }

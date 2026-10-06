@@ -1,5 +1,5 @@
 import { buildBlankDocx, parseDocx, saveDocx } from "@genoffice/docx-engine";
-import type { Block, Run, SaveBlock, TableModel } from "@genoffice/docx-engine";
+import type { Block, CommentInfo, Run, SaveBlock, TableModel } from "@genoffice/docx-engine";
 
 /**
  * The shell's own document capability, for `.docx` files that are not open in
@@ -55,6 +55,30 @@ export async function readDocumentBlocks(bytes: Uint8Array): Promise<DocumentBlo
     type: block.type,
     ...(block.level === undefined ? {} : { level: block.level }),
     text: blockText(block),
+  }));
+}
+
+export interface DocumentCommentRef {
+  readonly id: string;
+  readonly author: string;
+  readonly text: string;
+  readonly date?: string;
+  /** set on a reply: the comment it answers */
+  readonly parentId?: string;
+  /** the thread has been marked resolved */
+  readonly done?: boolean;
+}
+
+/** The comments the document carries, replies and resolved state included. */
+export async function readDocumentComments(bytes: Uint8Array): Promise<DocumentCommentRef[]> {
+  const parsed = await parseDocx(bytes);
+  return (parsed.comments ?? []).map((comment) => ({
+    id: comment.id,
+    author: comment.author,
+    text: comment.text,
+    ...(comment.date === undefined ? {} : { date: comment.date }),
+    ...(comment.parentId === undefined ? {} : { parentId: comment.parentId }),
+    ...(comment.done === undefined ? {} : { done: comment.done }),
   }));
 }
 
@@ -128,6 +152,116 @@ export async function replaceParagraphText(
       : passThrough(block),
   );
   return saveDocx(parsed, saveBlocks);
+}
+
+export interface DocumentComment {
+  readonly blockIndex: number;
+  readonly text: string;
+  readonly author?: string;
+  /** anchor only this text inside the block; the whole block when omitted */
+  readonly quote?: string;
+}
+
+/**
+ * The same document with comments added.
+ *
+ * Existing comments are kept: the engine regenerates `word/comments.xml` from the
+ * list it is handed, so the parsed ones have to be passed back in or they are
+ * dropped along with their markers.
+ */
+export async function addComments(
+  bytes: Uint8Array,
+  comments: readonly DocumentComment[],
+): Promise<Uint8Array> {
+  const parsed = await parseDocx(bytes);
+  const blocks = visibleBlocks(parsed);
+  const existing = parsed.comments ?? [];
+
+  let nextId = nextCommentId(existing);
+  const byBlock = new Map<number, { readonly id: string; readonly quote?: string }[]>();
+  const infos: CommentInfo[] = [...existing];
+  for (const comment of comments) {
+    const block = blocks[comment.blockIndex];
+    if (!block) {
+      throw new Error(`blockIndex ${comment.blockIndex} is out of range (0..${blocks.length - 1})`);
+    }
+    if (!REBUILDABLE.has(block.type)) {
+      throw new Error(
+        `block ${comment.blockIndex} is a ${block.type}; only paragraphs, headings and ` +
+          `list items can carry a comment`,
+      );
+    }
+    const id = String(nextId);
+    nextId += 1;
+    infos.push({
+      id,
+      author: comment.author ?? "User",
+      date: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+      text: comment.text,
+    });
+    const group = byBlock.get(comment.blockIndex) ?? [];
+    group.push(comment.quote === undefined ? { id } : { id, quote: comment.quote });
+    byBlock.set(comment.blockIndex, group);
+  }
+
+  const saveBlocks: SaveBlock[] = blocks.map((block, index) => {
+    const group = byBlock.get(index);
+    return group
+      ? { kind: "generated", block: asGenerated(block, commentRuns(block, group)) }
+      : passThrough(block);
+  });
+  return saveDocx(parsed, saveBlocks, { comments: infos });
+}
+
+function nextCommentId(existing: readonly CommentInfo[]): number {
+  let highest = 0;
+  for (const comment of existing) {
+    const id = Number(comment.id);
+    if (Number.isFinite(id) && id > highest) highest = id;
+  }
+  return highest + 1;
+}
+
+/** The block's runs, with the comment ids attached to the runs each one covers. */
+function commentRuns(
+  block: Block,
+  group: readonly { readonly id: string; readonly quote?: string }[],
+): Run[] {
+  const runs: Run[] = (block.runs ?? []).map((run) => ({ ...run }));
+  for (const anchor of group) {
+    const range = anchor.quote === undefined ? null : runRange(runs, anchor.quote);
+    const first = range ? range[0] : 0;
+    const last = range ? range[1] : runs.length - 1;
+    for (let index = first; index <= last; index += 1) {
+      const run = runs[index];
+      if (!run) continue;
+      run.commentIds = [...(run.commentIds ?? []), anchor.id];
+    }
+  }
+  return runs;
+}
+
+/** Inclusive run indexes covering `quote`, or null to mean "the whole block". */
+function runRange(runs: readonly Run[], quote: string): readonly [number, number] | null {
+  const full = runs.map((run) => run.text).join("");
+  const at = full.indexOf(quote);
+  if (at < 0) return null;
+  const last = at + quote.length - 1;
+
+  let cursor = 0;
+  let first = -1;
+  let final = -1;
+  for (let index = 0; index < runs.length; index += 1) {
+    const run = runs[index];
+    if (!run) continue;
+    const start = cursor;
+    const end = cursor + run.text.length - 1;
+    if (first < 0 && at <= end) first = index;
+    if (start <= last) final = index;
+    cursor += run.text.length;
+  }
+  if (first < 0 || final < 0 || final < first) return null;
+  return [first, final];
 }
 
 function visibleBlocks(parsed: { blocks?: Block[] }): Block[] {
