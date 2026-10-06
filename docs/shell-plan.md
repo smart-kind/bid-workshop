@@ -517,11 +517,15 @@ S3 的 A 组（挂载必需）**要先于** S4，因为 `getAiSettings` 这类�
 
 ### 8.4 下一步的方向
 
-- `packages/document-service` 现在有：读（文本 / 块列表）、**生成新文档**、**在某块后插入一段**、**替换某块文本**。
-  单测 `apps/desktop/tests/unit/document-service.spec.ts` 盖住了风险最大的那条——
+- 壳现在有**自己的文档工具**（内置 Pi 扩展 `pi-gui-documents`）：`read_docx` / `create_docx` / `update_docx`。
+  路径一律按 `ctx.cwd` 解析，**越出线程目录就拒绝**；`create` 不覆盖已存在的文件；
+  每次改动都把新的块索引回报给模型（改了顺序就得重读）。
+  单测 `apps/desktop/tests/unit/document-tools.spec.ts`（4 条）：写→读、改动落盘并回报新索引、
+  越界拒绝、不覆盖与坏操作报错。
+- 工具底下的能力在 `packages/document-service`（读 / 生成 / 插入 / 替换），
+  单测 `apps/desktop/tests/unit/document-service.spec.ts`（3 条）盖住风险最大的那条——
   「改一块，其余块逐字不变」（重建块时丢格式是这类编辑最典型的翻车方式）。
-  **还缺**：把批注写进文件（服务侧），以及把这些挂成壳自己的内置工具。
-- 挂成工具之后，才是 D11–D13 的真实模型三轮（读文档 / 生成文件 / 改文件）。
+- **下一步就是 D11–D13 的真实模型三轮**（读文档 / 生成文件 / 改文件），以及服务侧写批注。
 - 另有两笔欠账：**D9 的「接受 / 拒绝修订」**（被 §8.6 的库缺陷挡着）、**D10 的导出与新建空白**。
 
 ### 8.5 D1–D14 逐条状态（最后更新：本轮）
