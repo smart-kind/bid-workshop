@@ -463,8 +463,21 @@ S3 的 A 组（挂载必需）**要先于** S4，因为 `getAiSettings` 这类�
   - 4 个示例视图（github / trace / usage）：三个 bundle 被 `.gitignore` 吞掉（见 F7）。
   - 2 个 `new-thread-composer` + 1 个 `orchestration-runtime-tools`：本机 `ANTHROPIC_AUTH_TOKEN`
     泄漏进夹具环境，provider 被当成「已连接」。夹具补进 scrub 清单后即绿。
-- **D2 的前半达成**：干净 clone → install → check → build → 跑 spec，全通。
-- 还欠：D1 的真 clone 验证、D4–D5、D7–D14。
+- **D2 达成**：临时目录真 clone → `pnpm install --frozen-lockfile`（5.8s）→ `pnpm check` ✅ → build ✅，
+  `packages/document-editor/dist/index.html` 与 `apps/desktop/out/main/main.js` 都在。
+- **D4 达成**：`electron-builder.yml` 全量换成本项目身份；`package:dir` 产出
+  `apps/desktop/release/mac-arm64/Bid Workshop.app`；production 的 **packaged smoke 通过**
+  （真实启动打包后的 app 并起了一个线程）。
+  注意：**打包 app 的第一次启动握手动用了 180s**（未签名的新 bundle 被 macOS 首次评估），第二次 3.4s。
+  这不是产品问题，但会让任何「打包后第一次跑」的测试看起来像超时。
+- **顺带修掉一个真缺陷**：`vendor/genoffice/workspace-harness` 把 `@earendil-works/pi-*` 钉死在 `0.87.1`，
+  pnpm 因此同时装了两套 SDK；electron-builder 的收集器只拷根层那一份旧版本 →
+  打包产物里 `@earendil-works/pi-telemetry` 缺失、`openai` 还是 6.40（而 pi-ai 要 7.19）。
+  把 pin 放到 `^1.0.0` 之后整套 SDK 只剩 1.0.0，lockfile 少 62 行；打包依赖校验与 packaged smoke 都过了。
+  代价是它的 agent 层要跟着适配：1.0.0 把 `estimateContextTokens` 从 `pi-agent-core` 移走，
+  改成 `pi-coding-agent` 里**按单条消息**计数的 `estimateTokens`，
+  于是 `pruneTranscript` 的「整段 token 数」改成自己求和（语义不变）。
+- 还欠：D1 的收尾（发版流水线里还留着上游名字）、D5、D7–D14。
 
 ### 8.3 踩过的坑 / 结论
 
@@ -479,10 +492,13 @@ S3 的 A 组（挂载必需）**要先于** S4，因为 `getAiSettings` 这类�
   仓库脚本依赖 Node 的默认类型剥离（22.18+），所以出现「CI 绿、本机红」。排障第一步：确认跑的是哪个 node。
 - **开发机上的 provider 凭据会污染夹具测试。** 夹具的 scrub 清单漏了 `ANTHROPIC_AUTH_TOKEN`，
   一条环境变量就让 3 个 spec 红——而且失败信息里看不出任何和凭据有关的东西。
+- **一个「不常用的 vendored 包」能把整个打包产物搞坏。** 依赖冲突不会在 `pnpm check` 或 core lane 里露头，
+  只有 `verify:packaged-runtime-deps` 会查——而它此前从没在能跑的环境里跑过。
+  **结论：打包后必须跑 `verify:packaged-runtime-deps` + packaged smoke，不能只跑 dev 的那套。**
 
 ### 8.4 下一步的方向（还没做）
 
-- S1 剩：应用身份（D4）、真·干净 clone 验证（D1/D2 后半）。
+- S1 收尾：发版流水线里剩下的上游名字（见 S1.3 的清单）。
 - S2 起：把「改」和「存」接通（D7/D10），再批注 / 修订（D8/D9），再活文档 AI 桥（S5），最后真实模型链路（S6）。
 
 ---
