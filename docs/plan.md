@@ -313,7 +313,7 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 | **文档加载链路**（docx → 结构化数据） | ✅ 已完成（`document.ts` + `parser-docx.mjs`，实测解析真实文档通过）       |
 | 期望输出（带批注的 .docx）            | ❌ 未做                                                                    |
 | manifest.json                         | ❌ 未做                                                                    |
-| AI 审查逻辑                           | ❌ 未做，目前是定时器 + 写死的样例数据                                     |
+| AI 审查逻辑                           | ✅ 已完成（`review.ts` + `bid_record_findings`，模型执行审查）             |
 | Word 批注输出                         | ❌ 未做。机制已验证可行，未接进产品                                        |
 | UI 集成                               | ⚠️ 面板 UI 已有，已指向真实 .docx；右侧文档区未接                          |
 
@@ -437,12 +437,26 @@ lockfile 里没有 vendor 包的 importer，`pnpm install` 也不会写进去（
 
 实测：对 `投标文件-某软件科技.docx` 跑通 —— 17 个标题、3 张表（5×4 / 6×5 / 6×4，表头正确）、全文提取正常，`RESULT: PASS`。
 
-### 第 3 步：AI 审查逻辑
+### 第 3 步：AI 审查逻辑 — ✅ 已完成
 
-- AI Agent 拿到文档结构 + 评审条件
-- 逐项分析，生成审查结论
-- 每条结论包含：位置（blockIndex 或 textSpan）、问题描述、严重度、建议
-- 结论结构建议直接对齐 `review_write_findings` 的 schema（`id` / `check` / `basis` / `location` / `quote` / `finding` / `advice`），避免自造一套
+**审查由模型做，扩展不调用 LLM。** 扩展只负责组装 brief 和接收结论：
+
+- `bid_start_review` → 组装 **review brief**（评审条件 + 章节大纲 + 正文，超 60k 字截断）并返回给模型
+- `bid_record_findings` → 模型提交全部发现，落进 state，状态转 `done`
+- 面板的「开始审查」按钮走同一条 brief，并通过 `pi.sendUserMessage(brief)` 真正触发一个 agent turn
+
+组件：
+
+- `review.ts`：`readCriteria()` 读文档同目录的 `评审条件.md`（没有则用内置默认条件）、`buildReviewBrief()`、`toBidIssue()`
+- `contract.ts` 的 `BidIssue.location` 增加了 `blockIndex` 与 `quote`，并新增 `basis`（依据），
+  这样第 4 步能把批注锚到具体段落
+- 删除了 `mock-review.ts` 与定时器假的进度推进
+
+结论字段：`id` / `severity` / `category` / `title` / `description` / `section` / `blockIndex` / `quote` / `basis` / `suggestion`。
+比上游 `review_write_findings` 多保留了严重度与类别（面板 UI 依赖），少了 `check`（并入 `basis`）。
+
+实测：对样例文档组装 brief —— 读取到工作空间的 `评审条件.md`（4 个章节）、brief 3114 字、含正文与工具指引、
+结论映射保留 `blockIndex=53` 与 `basis`，`RESULT: PASS`。
 
 ### 第 4 步：Word 批注输出
 
@@ -559,3 +573,11 @@ lockfile 里没有 vendor 包的 importer，`pnpm install` 也不会写进去（
     `format:check` 另有 16 个**既有**违规文件（未擅自重排，见「CI 现状」）。
 18. **解耦 vendor 依赖**：按「扩展不直接依赖引擎」的方向重构——端口 + `.mjs` 适配器 + `.d.mts` 声明，
     使 CI 无 vendor 时也能 typecheck（已实测通过）。代价与剩余工作见「CI 现状」。
+
+**2026-10-06（第五轮：第 3 步落地）**：
+
+19. **第 3 步完成**：审查由模型执行，扩展组装 brief 并接收结论。
+    新增 `bid_record_findings`，`bid_start_review` 改为返回 review brief；
+    面板「开始审查」通过 `pi.sendUserMessage()` 真正触发 agent turn。删除 `mock-review.ts` 与假进度定时器。
+20. `BidIssue.location` 增加 `blockIndex` / `quote`，新增 `basis` —— 为第 4 步锚定批注铺路。
+    实测 brief 组装与结论映射均 `RESULT: PASS`；CI 模拟（无 vendor）typecheck 仍通过。

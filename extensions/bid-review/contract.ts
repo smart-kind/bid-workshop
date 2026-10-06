@@ -19,7 +19,11 @@ export interface BidIssue {
   category: string; // "qualification" | "pricing" | "technical" | "legal" | "format"
   title: string;
   description: string;
-  location?: { section?: string; page?: number };
+  /** Where the problem is. blockIndex points at a block in the loaded document
+   *  so a later step can anchor a Word comment there. */
+  location?: { section?: string; blockIndex?: number; page?: number; quote?: string };
+  /** Which requirement the finding is judged against. */
+  basis?: string;
   suggestion?: string;
 }
 

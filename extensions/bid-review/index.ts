@@ -5,8 +5,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { registerDesktopView } from "@bid-workshop/extension-ui";
 import { BidReview, type BidDocument, type BidReviewState } from "./contract";
 import { describeBid, loadBidDocument, setBidDocumentParser, type LoadedBid } from "./document";
-import { generateMockIssues, generateMockSummary } from "./mock-review";
 import { docxParser } from "./parser-docx.mjs";
+import { buildReviewBrief, readCriteria, toBidIssue, type FindingInput } from "./review";
 
 // Install the document engine adapter once, at module load. Everything below
 // talks to the parser interface rather than to the engine.
@@ -32,6 +32,30 @@ interface LoadDocumentDetails {
   truncated: boolean;
   error?: string;
 }
+
+/** Details reported by bid_start_review, shared by both branches. */
+interface StartReviewDetails {
+  fileIds: string[];
+  error?: string;
+}
+
+/** The finding shape the model submits to bid_record_findings. */
+const FINDING = Type.Object({
+  id: Type.String({ minLength: 1, description: "唯一编号，例如 F-1" }),
+  severity: Type.Union([Type.Literal("critical"), Type.Literal("warning"), Type.Literal("info")]),
+  category: Type.String({
+    description: "类别：qualification / pricing / technical / legal / format",
+  }),
+  title: Type.String({ minLength: 1, description: "一句话概括问题" }),
+  description: Type.String({ minLength: 1, description: "问题描述，写清依据什么判断" }),
+  section: Type.Optional(Type.String({ description: "所在章节名" })),
+  blockIndex: Type.Optional(
+    Type.Number({ description: "正文块序号（从 0 开始），用于把批注锚到具体段落" }),
+  ),
+  quote: Type.Optional(Type.String({ description: "最小必要的原文摘录" })),
+  basis: Type.Optional(Type.String({ description: "依据：对应审查条件的哪一条" })),
+  suggestion: Type.Optional(Type.String({ description: "修改建议" })),
+});
 
 /** Parse a .docx and register it as a loaded document. */
 async function ingestDocument(filePath: string): Promise<BidDocument> {
@@ -62,38 +86,8 @@ function initialState(): BidReviewState {
   };
 }
 
-let reviewTimer: ReturnType<typeof setTimeout> | null = null;
-
-function runMockReview(getSnapshot: () => BidReviewState, publish: (next: BidReviewState) => void) {
-  if (reviewTimer) clearTimeout(reviewTimer);
-  const steps = [
-    { progress: 20, delay: 600 },
-    { progress: 45, delay: 800 },
-    { progress: 70, delay: 700 },
-    { progress: 90, delay: 500 },
-  ];
-  let i = 0;
-  const tick = () => {
-    if (i < steps.length) {
-      const s = steps[i];
-      publish({ ...getSnapshot(), progress: s.progress, reviewStatus: "reviewing" });
-      i++;
-      reviewTimer = setTimeout(tick, s.delay);
-    } else {
-      const issues = generateMockIssues();
-      const summary = generateMockSummary();
-      publish({
-        ...getSnapshot(),
-        reviewStatus: "done",
-        progress: 100,
-        issues,
-        summary,
-      });
-      reviewTimer = null;
-    }
-  };
-  tick();
-}
+/** Documents currently under review, by document id. */
+const reviewingBids = new Map<string, { doc: BidDocument; bid: LoadedBid }>();
 
 export default function bidReview(pi: ExtensionAPI) {
   let ctx: ExtensionContext | null = null;
@@ -178,11 +172,33 @@ export default function bidReview(pi: ExtensionAPI) {
   pi.registerTool({
     name: "bid_start_review",
     label: "Start bid review",
-    description: "Start AI-powered review of loaded bid documents",
+    description:
+      "Start reviewing a loaded bid document: returns the review conditions together with the document text to judge them against",
     parameters: Type.Object({
       fileIds: Type.Array(Type.String(), { minItems: 1, maxItems: 20 }),
     }),
     async execute(_id, input) {
+      reviewingBids.clear();
+      const briefs: string[] = [];
+      for (const fileId of input.fileIds) {
+        const doc = snapshot.loadedFiles.find((file) => file.id === fileId);
+        const bid = loadedBids.get(fileId);
+        if (!doc || !bid) continue;
+        reviewingBids.set(fileId, { doc, bid });
+        briefs.push(buildReviewBrief(doc, bid, readCriteria(doc.path), TEXT_BUDGET));
+      }
+
+      if (briefs.length === 0) {
+        const message = "没有可审查的文档：请先用 bid_load_document 加载标书";
+        publish({ ...snapshot, lastError: message });
+        const details: StartReviewDetails = { fileIds: input.fileIds, error: message };
+        return {
+          content: [{ type: "text", text: message }],
+          details,
+          isError: true,
+        };
+      }
+
       publish({
         ...snapshot,
         reviewStatus: "reviewing",
@@ -191,12 +207,43 @@ export default function bidReview(pi: ExtensionAPI) {
         summary: null,
         lastError: null,
       });
-      runMockReview(getSnapshot, publish);
+      const details: StartReviewDetails = { fileIds: [...reviewingBids.keys()] };
+      return {
+        content: [{ type: "text", text: briefs.join("\n\n---\n\n") }],
+        details,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "bid_record_findings",
+    label: "Record bid review findings",
+    description:
+      "Submit the findings of the current bid review. Call once per review, with every finding from that review",
+    parameters: Type.Object({
+      findings: Type.Array(FINDING, { minItems: 1 }),
+      summary: Type.Optional(Type.String({ description: "整份标书的总体结论" })),
+    }),
+    async execute(_id, input) {
+      const issues = input.findings.map(toBidIssue);
+      publish({
+        ...snapshot,
+        reviewStatus: "done",
+        progress: 100,
+        issues,
+        summary: input.summary ?? null,
+        lastError: null,
+      });
+      const counts = { critical: 0, warning: 0, info: 0 };
+      for (const issue of issues) counts[issue.severity]++;
       return {
         content: [
-          { type: "text", text: `Bid review started for ${input.fileIds.length} document(s)` },
+          {
+            type: "text",
+            text: `已记录 ${issues.length} 条结论（严重 ${counts.critical} / 警告 ${counts.warning} / 提示 ${counts.info}）`,
+          },
         ],
-        details: { fileIds: input.fileIds },
+        details: { count: issues.length, ...counts },
       };
     },
   });
@@ -252,21 +299,34 @@ export default function bidReview(pi: ExtensionAPI) {
             },
             async startReview(input) {
               const reviewId = crypto.randomUUID();
+              reviewingBids.clear();
+              const briefs: string[] = [];
+              for (const fileId of input.fileIds) {
+                const doc = snapshot.loadedFiles.find((file) => file.id === fileId);
+                const bid = loadedBids.get(fileId);
+                if (!doc || !bid) continue;
+                reviewingBids.set(fileId, { doc, bid });
+                briefs.push(buildReviewBrief(doc, bid, readCriteria(doc.path), TEXT_BUDGET));
+              }
+              if (briefs.length === 0) {
+                const message = "没有可审查的文档：请先加载标书";
+                publish({ ...snapshot, lastError: message });
+                throw new Error(message);
+              }
               publish({
                 ...snapshot,
                 reviewStatus: "reviewing",
                 progress: 0,
                 issues: [],
                 summary: null,
+                lastError: null,
               });
-              runMockReview(getSnapshot, publish);
+              // The review itself is the model's job; hand it the brief as a turn.
+              await pi.sendUserMessage(briefs.join("\n\n---\n\n"));
               return { reviewId };
             },
             async cancelReview() {
-              if (reviewTimer) {
-                clearTimeout(reviewTimer);
-                reviewTimer = null;
-              }
+              reviewingBids.clear();
               publish({ ...snapshot, reviewStatus: "idle", progress: 0 });
             },
             async exportReport(input) {
