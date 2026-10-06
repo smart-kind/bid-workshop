@@ -22,7 +22,7 @@ export async function resolvePackagedAppBundle(releaseDir = packagedReleaseDir):
   }
 
   const appBundle =
-    appBundles.find((candidate) => basename(candidate) === "pi-gui.app") ?? appBundles[0];
+    appBundles.find((candidate) => basename(candidate) === "Bid Workshop.app") ?? appBundles[0];
   if (!appBundle) {
     throw new Error(
       `No .app bundle found under ${releaseDir}. Run pnpm --filter @bid-workshop/desktop run package:dir first.`,

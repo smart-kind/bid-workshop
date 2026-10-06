@@ -1,6 +1,6 @@
-appId: com.pi-gui.desktop
-productName: pi-gui
-copyright: Copyright 2026 Matthew Lam
+appId: com.bid-workshop.desktop
+productName: Bid Workshop
+copyright: Copyright 2026 Bid Workshop Team
 electronVersion: 37.10.3
 
 directories:
@@ -39,14 +39,18 @@ asarUnpack:
   - "**/node_modules/node-pty/**/*"
   - "**/node_modules/.pnpm/node-pty*/node_modules/node-pty/**/*"
 
-artifactName: ${productName}-${version}-${arch}.${ext}
+# Artifact names stay lower-case and hyphenated: `productName` is the display
+# name the .app takes, and a space in it would land in every file name.
+artifactName: bid-workshop-${version}-${arch}.${ext}
 
 mac:
   category: public.app-category.developer-tools
   hardenedRuntime: true
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.inherit.plist
-  notarize: true
+  # Notarization needs Apple credentials this project does not have. The app
+  # still builds and runs unsigned; re-enable this together with the credentials.
+  notarize: false
   target:
     - target: dmg
       arch: arm64
@@ -54,16 +58,16 @@ mac:
       arch: arm64
   darkModeSupport: true
   extraFiles:
-    - from: build/native/pi-gui-notification-status-helper
-      to: MacOS/pi-gui-notification-status-helper
+    - from: build/native/bid-workshop-notification-status-helper
+      to: MacOS/bid-workshop-notification-status-helper
 
 linux:
   category: Development
-  executableName: pi-gui
-  maintainer: Matthew Lam <minghinmatthew.lam@gmail.com>
-  vendor: pi-gui
-  synopsis: Codex-style desktop app for the pi coding agent
-  description: A native desktop interface for pi coding agent sessions, workspaces, and tools.
+  executableName: bid-workshop
+  maintainer: Bid Workshop Team <smart-kind@users.noreply.github.com>
+  vendor: Bid Workshop
+  synopsis: Desktop workbench for AI-assisted document review
+  description: A desktop workbench for AI agent sessions, workspaces, and Word document review.
   target:
     - target: AppImage
       arch:
@@ -73,8 +77,8 @@ linux:
         - x64
 
 deb:
-  artifactName: ${productName}_${version}_${arch}.${ext}
-  packageName: pi-gui
+  artifactName: bid-workshop_${version}_${arch}.${ext}
+  packageName: bid-workshop
   packageCategory: devel
   priority: optional
   afterRemove: resources/linux/after-remove.sh
@@ -91,7 +95,7 @@ deb:
     - libgbm1
 
 win:
-  executableName: pi-gui
+  executableName: bid-workshop
   # Keep icon/version metadata editing; signing is optional without credentials.
   signAndEditExecutable: true
   target:
@@ -103,16 +107,17 @@ win:
         - x64
 
 nsis:
-  artifactName: ${productName}-${version}-${arch}-setup.${ext}
+  artifactName: bid-workshop-${version}-${arch}-setup.${ext}
 
 portable:
-  artifactName: ${productName}-${version}-${arch}-portable.${ext}
+  artifactName: bid-workshop-${version}-${arch}-portable.${ext}
 
 toolsets:
   appimage: "1.0.2"
 
 dmg:
-  sign: true
+  # Signing the disk image needs a Developer ID this project does not have.
+  sign: false
   contents:
     - x: 130
       y: 220
@@ -126,5 +131,5 @@ dmg:
 
 publish:
   provider: github
-  owner: minghinmatthewlam
-  repo: pi-gui
+  owner: smart-kind
+  repo: bid-workshop

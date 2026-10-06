@@ -97,10 +97,10 @@ const notificationHelperPath =
     ? path.join(
         releaseDir,
         "mac-arm64",
-        "pi-gui.app",
+        "Bid Workshop.app",
         "Contents",
         "MacOS",
-        "pi-gui-notification-status-helper",
+        "bid-workshop-notification-status-helper",
       )
     : undefined;
 const pnpmBinary = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
@@ -208,7 +208,14 @@ console.log(`Verified packaged runtime dependencies in ${asarPath}`);
 
 function resolveAsarPath(releaseDir, packagePlatform) {
   if (packagePlatform === "darwin") {
-    return path.join(releaseDir, "mac-arm64", "pi-gui.app", "Contents", "Resources", "app.asar");
+    return path.join(
+      releaseDir,
+      "mac-arm64",
+      "Bid Workshop.app",
+      "Contents",
+      "Resources",
+      "app.asar",
+    );
   }
 
   if (packagePlatform === "linux") {

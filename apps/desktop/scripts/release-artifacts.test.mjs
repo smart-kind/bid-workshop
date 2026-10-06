@@ -22,20 +22,20 @@ function updateManifestName(platform) {
 
 function primaryUpdateAsset(platform) {
   if (platform === "macos") {
-    return `pi-gui-${VERSION}-arm64.zip`;
+    return `bid-workshop-${VERSION}-arm64.zip`;
   }
   if (platform === "linux") {
-    return `pi-gui-${VERSION}-x86_64.AppImage`;
+    return `bid-workshop-${VERSION}-x86_64.AppImage`;
   }
-  return `pi-gui-${VERSION}-x64-setup.exe`;
+  return `bid-workshop-${VERSION}-x64-setup.exe`;
 }
 
 function updateAssets(platform) {
   if (platform === "macos") {
-    return [`pi-gui-${VERSION}-arm64.zip`, `pi-gui-${VERSION}-arm64.dmg`];
+    return [`bid-workshop-${VERSION}-arm64.zip`, `bid-workshop-${VERSION}-arm64.dmg`];
   }
   if (platform === "linux") {
-    return [`pi-gui-${VERSION}-x86_64.AppImage`, `pi-gui_${VERSION}_amd64.deb`];
+    return [`bid-workshop-${VERSION}-x86_64.AppImage`, `bid-workshop_${VERSION}_amd64.deb`];
   }
   return [primaryUpdateAsset(platform)];
 }
