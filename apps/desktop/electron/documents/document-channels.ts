@@ -16,4 +16,12 @@ export const DOCUMENT_IPC = {
 /** Pushed main → document view. Not invoke channels, so they carry no reply. */
 export const DOCUMENT_PUSH = {
   menuCommand: "bid-docs:menu-command",
+  closeCheck: "bid-docs:close-check",
+  closeSaveRequest: "bid-docs:close-save-request",
+} as const;
+
+/** Document view → main: the answers to the pushes above. */
+export const DOCUMENT_REPORT = {
+  closeCheck: "bid-docs:close-check-result",
+  closeSaveResult: "bid-docs:close-save-result",
 } as const;

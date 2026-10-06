@@ -3,7 +3,12 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { protocol, WebContentsView, type BrowserWindow } from "electron";
 import { DOCUMENT_VIEW_SCHEME } from "./document-channels";
-import { registerDocumentViewIpc, sendDocumentMenuCommand } from "../ipc/document-view-ipc";
+import {
+  prepareDocumentForLeave,
+  registerDocumentViewIpc,
+  sendDocumentMenuCommand,
+  type DocumentViewIpcTarget,
+} from "../ipc/document-view-ipc";
 
 /**
  * The document editor (`packages/document-editor`) is a standalone static
@@ -111,15 +116,20 @@ export class DocumentViewOwner {
     );
   }
 
-  /** Show `input.absolutePath` in `window`'s document view at `input.rect`, creating the view on first use. */
-  show(window: BrowserWindow, input: ShowDocumentInput): void {
-    if (window.isDestroyed()) return;
+  /**
+   * Show `input.absolutePath` in `window`'s document view at `input.rect`,
+   * creating the view on first use. Returns false when another document was
+   * already open and could not be saved first, in which case nothing changes.
+   */
+  async show(window: BrowserWindow, input: ShowDocumentInput): Promise<boolean> {
+    if (window.isDestroyed()) return false;
     const entry = this.entryFor(window);
     if (entry.currentPath === input.absolutePath && entry.pending) {
       entry.view.setBounds(rectToBounds(input.rect));
       entry.view.setVisible(true);
-      return;
+      return true;
     }
+    if (!(await this.leavesCleanly(entry, input.absolutePath))) return false;
     if (entry.pending) this.handoffs.delete(entry.pending.token);
     const token = randomUUID();
     this.handoffs.set(token, { absolutePath: input.absolutePath });
@@ -142,12 +152,18 @@ export class DocumentViewOwner {
           this.onDiagnostic(`load document view failed: ${stringify(error)}`),
         );
     }
+    return true;
   }
 
-  /** Hide the view when the pane goes away or a non-document file is selected. */
-  hide(window: BrowserWindow): void {
+  /**
+   * Hide the view when the pane goes away or a non-document file is selected.
+   * Returns false when the document has unsaved work that could not be saved;
+   * the view then stays exactly as it is rather than dropping the edits.
+   */
+  async hide(window: BrowserWindow): Promise<boolean> {
     const entry = this.entries.get(window.id);
-    if (!entry || window.isDestroyed()) return;
+    if (!entry || window.isDestroyed()) return true;
+    if (!(await this.leavesCleanly(entry, null))) return false;
     if (entry.pending) this.handoffs.delete(entry.pending.token);
     entry.pending = null;
     entry.currentPath = null;
@@ -155,6 +171,19 @@ export class DocumentViewOwner {
     // `View` exposes no visibility getter; zeroing the bounds makes "hidden"
     // observable (and a zero-sized view paints nothing even if still attached).
     entry.view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+    return true;
+  }
+
+  /** True when `entry` may move on: nothing unsaved, or its save went through. */
+  private leavesCleanly(entry: Entry, nextPath: string | null): Promise<boolean> {
+    return prepareDocumentForLeave(entry.view.webContents, this.viewLookup(), nextPath);
+  }
+
+  private viewLookup(): Pick<DocumentViewIpcTarget, "hasSender" | "documentPathForSender"> {
+    return {
+      hasSender: (senderId) => this.entryForSender(senderId) !== undefined,
+      documentPathForSender: (senderId) => this.entryForSender(senderId)?.currentPath ?? null,
+    };
   }
 
   /** Detach the view without closing its webContents (closing can wedge the UI thread). */

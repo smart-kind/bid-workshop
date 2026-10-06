@@ -965,14 +965,26 @@ export function registerDesktopIpc({
       }
       const filePath = expectString(rawFilePath, "filePath");
       const absolutePath = await resolveExistingWorkspacePath(workspacePath, filePath);
-      owners.documentView.show(window, {
+      // Switching documents reloads the hosted renderer, so it first gets the
+      // chance to save. When that save fails the switch is dropped: the edits
+      // only exist in the renderer, and reloading would silently discard them.
+      const shown = await owners.documentView.show(window, {
         absolutePath,
         rect: expectDocumentViewBounds(rawBounds),
       });
+      if (!shown) {
+        console.warn(
+          `[documents] kept the open document: ${absolutePath} could not be shown after saving`,
+        );
+      }
     },
   );
-  ipcMain.handle(desktopIpc.hideDocumentView, (event) => {
-    owners.documentView.hide(senderWindow(windows, event));
+  ipcMain.handle(desktopIpc.hideDocumentView, async (event) => {
+    const window = senderWindow(windows, event);
+    const hidden = await owners.documentView.hide(window);
+    if (!hidden) {
+      console.warn("[documents] kept the document view: its unsaved work could not be saved");
+    }
   });
   ipcMain.handle(desktopIpc.toggleWindowMaximize, (event) => {
     const window = senderWindow(windows, event);

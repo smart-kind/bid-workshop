@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { DOCUMENT_IPC, DOCUMENT_PUSH } from "./documents/document-channels";
+import { DOCUMENT_IPC, DOCUMENT_PUSH, DOCUMENT_REPORT } from "./documents/document-channels";
 
 /**
  * `window.desktop` for the hosted document editor.
@@ -107,10 +107,12 @@ const desktop = {
   onAiStream: unsubscribe,
   onMenuCommand: (handler: (command: string, payload?: string) => void) =>
     subscribeArgs<[string, string?]>(DOCUMENT_PUSH.menuCommand, handler),
-  onCloseCheck: unsubscribe,
-  reportCloseCheck: noop,
-  onCloseSaveRequest: unsubscribe,
-  reportCloseSaveResult: noop,
+  onCloseCheck: (handler: () => void) => subscribeArgs<[]>(DOCUMENT_PUSH.closeCheck, handler),
+  reportCloseCheck: (state: unknown) => ipcRenderer.send(DOCUMENT_REPORT.closeCheck, state),
+  onCloseSaveRequest: (handler: () => void) =>
+    subscribeArgs<[]>(DOCUMENT_PUSH.closeSaveRequest, handler),
+  reportCloseSaveResult: (ok: boolean) =>
+    ipcRenderer.send(DOCUMENT_REPORT.closeSaveResult, ok === true),
   reportViewMenuState: noop,
 };
 

@@ -1,5 +1,11 @@
-import { BrowserWindow, ipcMain, webContents, type IpcMainInvokeEvent } from "electron";
-import { DOCUMENT_IPC, DOCUMENT_PUSH } from "../documents/document-channels";
+import {
+  BrowserWindow,
+  ipcMain,
+  webContents,
+  type IpcMainInvokeEvent,
+  type WebContents,
+} from "electron";
+import { DOCUMENT_IPC, DOCUMENT_PUSH, DOCUMENT_REPORT } from "../documents/document-channels";
 import type { PendingDocument } from "../documents/document-view";
 import {
   fileExists,
@@ -27,6 +33,9 @@ export interface DocumentViewIpcTarget {
   /** the view's document now lives at this path (first save, Save As, New) */
   noteSavedPath(senderId: number, absolutePath: string): void;
 }
+
+/** The part of the target the leave guard needs; the owner passes itself. */
+export type DocumentViewLookup = Pick<DocumentViewIpcTarget, "hasSender" | "documentPathForSender">;
 
 /**
  * `ipcMain` entry points for the hosted document editor.
@@ -146,6 +155,15 @@ export function registerDocumentViewIpc(target: DocumentViewIpcTarget): void {
     assertDocumentSender(target, event, DOCUMENT_IPC.recentFiles);
     return readRecentDocuments();
   });
+
+  // The leave guard's answers. There is no reply to send for an unknown sender,
+  // so those are dropped rather than thrown.
+  ipcMain.on(DOCUMENT_REPORT.closeCheck, (event, raw: unknown) => {
+    settleLeave(target, event.sender.id, "check", dirtyFromReport(raw));
+  });
+  ipcMain.on(DOCUMENT_REPORT.closeSaveResult, (event, raw: unknown) => {
+    settleLeave(target, event.sender.id, "save", raw === true);
+  });
 }
 
 /**
@@ -160,6 +178,111 @@ export function sendDocumentMenuCommand(
   if (!focused || !target.hasSender(focused.id)) return false;
   focused.send(DOCUMENT_PUSH.menuCommand, command);
   return true;
+}
+
+const CHECK_TIMEOUT_MS = 5_000;
+const SAVE_TIMEOUT_MS = 60_000;
+
+type LeaveStage = "check" | "save";
+
+interface PendingLeave {
+  readonly stage: LeaveStage;
+  readonly finish: (value: boolean) => void;
+}
+
+const pendingLeaves = new Map<number, PendingLeave>();
+const inFlightLeaves = new Map<number, Promise<boolean>>();
+
+/**
+ * Gives a document view the chance to save before it is hidden or reloaded.
+ *
+ * Both of those reload the renderer, which would otherwise drop edits that only
+ * exist in memory — the pane reports its rectangle on every resize, so the guard
+ * only runs when the document actually changes.
+ *
+ * Guards overlap in practice: the pane's effect cleans up and then re-runs on
+ * every switch, and a resize re-reports the rectangle, so two can arrive in the
+ * same tick. They all ask one question, so they share one answer. Running two
+ * handshakes instead lets the second one release the first as "done", and the
+ * view is then torn down (its open path cleared) while its save is still on the
+ * way — which is exactly how a save came back refused with "not showing that
+ * document".
+ *
+ * Returns false when the view was asked to save and did not manage it; the caller
+ * then leaves the view alone rather than moving away from unsaved work.
+ */
+export function prepareDocumentForLeave(
+  contents: WebContents,
+  view: DocumentViewLookup,
+  nextPath: string | null,
+): Promise<boolean> {
+  const senderId = contents.id;
+  if (contents.isDestroyed() || contents.isCrashed()) return Promise.resolve(true);
+  if (!view.hasSender(senderId)) return Promise.resolve(true);
+  const openPath = view.documentPathForSender(senderId);
+  if (!openPath || openPath === nextPath) return Promise.resolve(true);
+  const running = inFlightLeaves.get(senderId);
+  if (running) return running;
+  const run = runLeaveGuard(contents, senderId);
+  const tracked = run.finally(() => {
+    if (inFlightLeaves.get(senderId) === tracked) inFlightLeaves.delete(senderId);
+  });
+  inFlightLeaves.set(senderId, tracked);
+  return tracked;
+}
+
+async function runLeaveGuard(contents: WebContents, senderId: number): Promise<boolean> {
+  const dirty = await askLeave(contents, senderId, "check");
+  if (!dirty) return true;
+  return await askLeave(contents, senderId, "save");
+}
+
+function askLeave(contents: WebContents, senderId: number, stage: LeaveStage): Promise<boolean> {
+  const channel = stage === "check" ? DOCUMENT_PUSH.closeCheck : DOCUMENT_PUSH.closeSaveRequest;
+  const timeoutMs = stage === "check" ? CHECK_TIMEOUT_MS : SAVE_TIMEOUT_MS;
+  return new Promise<boolean>((resolve) => {
+    let timer: NodeJS.Timeout | undefined;
+    const record: PendingLeave = {
+      stage,
+      finish: (value) => {
+        if (timer) clearTimeout(timer);
+        contents.removeListener("destroyed", onGone);
+        if (pendingLeaves.get(senderId) === record) pendingLeaves.delete(senderId);
+        resolve(value);
+      },
+    };
+    const onGone = (): void => record.finish(false);
+    timer = setTimeout(() => {
+      console.warn(
+        stage === "check"
+          ? "[documents] the renderer did not report whether it has unsaved work"
+          : "[documents] the renderer did not report a save before leaving",
+      );
+      // An unanswered check counts as dirty: protecting work beats a reload that
+      // silently discards it. An unanswered save cannot be assumed to have worked.
+      record.finish(stage === "check");
+    }, timeoutMs);
+    pendingLeaves.set(senderId, record);
+    contents.once("destroyed", onGone);
+    contents.send(channel);
+  });
+}
+
+function settleLeave(
+  target: Pick<DocumentViewIpcTarget, "hasSender">,
+  senderId: number,
+  stage: LeaveStage,
+  value: boolean,
+): void {
+  if (!target.hasSender(senderId)) return;
+  const record = pendingLeaves.get(senderId);
+  if (!record || record.stage !== stage) return;
+  record.finish(value);
+}
+
+function dirtyFromReport(raw: unknown): boolean {
+  if (typeof raw !== "object" || raw === null || !("dirty" in raw)) return true;
+  return (raw as { dirty?: unknown }).dirty === true;
 }
 
 function joinName(source: string, defaultName: string): string {
