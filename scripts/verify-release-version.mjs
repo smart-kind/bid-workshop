@@ -3,10 +3,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 
-export const RELEASE_PACKAGE_PATHS = [
-  "package.json",
-  "apps/desktop/package.json",
-];
+export const RELEASE_PACKAGE_PATHS = ["package.json", "apps/desktop/package.json"];
 
 const VERSION_PATTERN =
   /^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/;

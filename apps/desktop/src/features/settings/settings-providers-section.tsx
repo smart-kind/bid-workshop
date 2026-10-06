@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import type { RuntimeProviderRecord, RuntimeSnapshot } from "@bid-workshop/session-driver/runtime-types";
+import type {
+  RuntimeProviderRecord,
+  RuntimeSnapshot,
+} from "@bid-workshop/session-driver/runtime-types";
 import { SearchIcon } from "../../ui/icons";
 import type { CustomProviderConfig } from "../../../contracts/ipc";
 import { SettingsCustomEndpointsSection } from "./settings-custom-endpoints-section";

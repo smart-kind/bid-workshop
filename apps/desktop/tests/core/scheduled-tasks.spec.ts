@@ -198,7 +198,9 @@ test("a scheduled run can use the scheduled-task tools while it is still running
           throw new Error("Scheduled-task test hooks are unavailable");
         }
         const { createRequire } = process.getBuiltinModule("module");
-        const { PiSdkDriver: Driver } = createRequire(input.entry)("@bid-workshop/pi-sdk-driver") as {
+        const { PiSdkDriver: Driver } = createRequire(input.entry)(
+          "@bid-workshop/pi-sdk-driver",
+        ) as {
           PiSdkDriver: typeof PiSdkDriver;
         };
         let listed = "";

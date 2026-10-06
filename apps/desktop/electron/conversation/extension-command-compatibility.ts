@@ -1,4 +1,7 @@
-import type { RuntimeCommandRecord, RuntimeSnapshot } from "@bid-workshop/session-driver/runtime-types";
+import type {
+  RuntimeCommandRecord,
+  RuntimeSnapshot,
+} from "@bid-workshop/session-driver/runtime-types";
 import type { ExtensionCommandCompatibilityRecord } from "../../contracts/desktop-state";
 
 export interface PendingRuntimeCommandExecution {

@@ -3,6 +3,9 @@
 # Vendored genoffice sources keep upstream's formatting; reformatting them here
 # would fork the copy for no reason. Refresh with scripts/sync-genoffice.mjs.
 /vendor/
+# GitNexus index and tooling metadata, not part of the project's sources.
+/.gitnexus/
+/.claude/skills/
 # Anchor outputs to roots so similarly named source folders stay checked.
 /dist/
 /dist-electron/

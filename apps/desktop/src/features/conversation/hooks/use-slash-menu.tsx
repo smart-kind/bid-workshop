@@ -1,5 +1,8 @@
 import { useEffect, useState, type Dispatch, type KeyboardEvent, type SetStateAction } from "react";
-import type { RuntimeCommandRecord, RuntimeSnapshot } from "@bid-workshop/session-driver/runtime-types";
+import type {
+  RuntimeCommandRecord,
+  RuntimeSnapshot,
+} from "@bid-workshop/session-driver/runtime-types";
 import type {
   DesktopAppState,
   ExtensionCommandCompatibilityRecord,

@@ -10,7 +10,9 @@
         "../../packages/pi-sdk-driver/src/dev-reload-probe.ts"
       ],
       "@bid-workshop/catalogs": ["../../packages/catalogs/src/index.ts"],
-      "@bid-workshop/catalogs/dev-reload-probe": ["../../packages/catalogs/src/dev-reload-probe.ts"],
+      "@bid-workshop/catalogs/dev-reload-probe": [
+        "../../packages/catalogs/src/dev-reload-probe.ts"
+      ],
       "@bid-workshop/session-driver": ["../../packages/session-driver/src/index.ts"],
       "@bid-workshop/session-driver/runtime-types": [
         "../../packages/session-driver/src/runtime-types.ts"
@@ -19,7 +21,9 @@
         "../../packages/session-driver/src/dev-reload-probe.ts"
       ],
       "@bid-workshop/catalogs/node": ["../../packages/catalogs/src/node/index.ts"],
-      "@bid-workshop/catalogs/node/atomic-write": ["../../packages/catalogs/src/node/atomic-write.ts"]
+      "@bid-workshop/catalogs/node/atomic-write": [
+        "../../packages/catalogs/src/node/atomic-write.ts"
+      ]
     }
   }
 }

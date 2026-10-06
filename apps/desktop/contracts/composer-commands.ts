@@ -1,5 +1,8 @@
 import type { SessionConfig } from "@bid-workshop/session-driver";
-import type { RuntimeCommandRecord, RuntimeSnapshot } from "@bid-workshop/session-driver/runtime-types";
+import type {
+  RuntimeCommandRecord,
+  RuntimeSnapshot,
+} from "@bid-workshop/session-driver/runtime-types";
 
 export type ParsedComposerCommand =
   | { type: "model"; provider: string; modelId: string }

@@ -7,7 +7,11 @@ const desktopDir = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(desktopDir, "..", "..");
 const rawArgs = process.argv.slice(2);
 const extraArgs = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
-const packageFilters = ["@bid-workshop/session-driver", "@bid-workshop/pi-sdk-driver", "@bid-workshop/catalogs"];
+const packageFilters = [
+  "@bid-workshop/session-driver",
+  "@bid-workshop/pi-sdk-driver",
+  "@bid-workshop/catalogs",
+];
 const extensionUiPackage = "@bid-workshop/extension-ui";
 
 async function main() {

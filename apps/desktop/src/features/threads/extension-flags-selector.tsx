@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { ExtensionFlagValues } from "@bid-workshop/session-driver";
-import type { RuntimeExtensionFlag, RuntimeSnapshot } from "@bid-workshop/session-driver/runtime-types";
+import type {
+  RuntimeExtensionFlag,
+  RuntimeSnapshot,
+} from "@bid-workshop/session-driver/runtime-types";
 import { SettingsSwitch } from "../settings/settings-controls";
 
 interface FlagGroup {

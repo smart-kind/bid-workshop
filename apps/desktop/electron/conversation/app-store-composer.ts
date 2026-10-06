@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { sessionKey } from "@bid-workshop/session-driver";
 import type { SessionConfig, SessionQueuedMessage, SessionRef } from "@bid-workshop/session-driver";
 import type { PiSdkDriver } from "@bid-workshop/pi-sdk-driver";
-import type { RuntimeCommandRecord, RuntimeSnapshot } from "@bid-workshop/session-driver/runtime-types";
+import type {
+  RuntimeCommandRecord,
+  RuntimeSnapshot,
+} from "@bid-workshop/session-driver/runtime-types";
 import type {
   ComposerAttachment,
   DesktopAppState,

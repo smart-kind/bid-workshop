@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { sessionKey } from "@bid-workshop/session-driver";
-import type { RuntimeExtensionRecord, RuntimeSnapshot } from "@bid-workshop/session-driver/runtime-types";
+import type {
+  RuntimeExtensionRecord,
+  RuntimeSnapshot,
+} from "@bid-workshop/session-driver/runtime-types";
 import type { TranscriptMessage } from "../../contracts/timeline-types";
 import { extensionToolLabels, extensionToolRowLabel } from "../../contracts/tool-labels";
 import {

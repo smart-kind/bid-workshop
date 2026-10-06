@@ -1,6 +1,10 @@
 import { isCardEntryItem, sessionKey } from "@bid-workshop/session-driver";
 import type { SessionTranscriptItem, SessionTranscriptPin } from "@bid-workshop/session-driver";
-import type { SessionDriverEvent, SessionQueuedMessage, SessionRef } from "@bid-workshop/session-driver";
+import type {
+  SessionDriverEvent,
+  SessionQueuedMessage,
+  SessionRef,
+} from "@bid-workshop/session-driver";
 import type { TranscriptMessage } from "../../contracts/desktop-state";
 import {
   extensionToolRowLabel,

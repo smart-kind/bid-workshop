@@ -1,5 +1,9 @@
 import type { ReactNode } from "react";
-import type { ExtensionAction, ExtensionCard, ExtensionCardTone } from "@bid-workshop/session-driver";
+import type {
+  ExtensionAction,
+  ExtensionCard,
+  ExtensionCardTone,
+} from "@bid-workshop/session-driver";
 import { ExtensionIcon } from "../../ui/icons";
 
 /** Asks the app to run one of the fixed actions an extension's button can name. */
