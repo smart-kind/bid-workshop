@@ -458,12 +458,31 @@ lockfile 里没有 vendor 包的 importer，`pnpm install` 也不会写进去（
 实测：对样例文档组装 brief —— 读取到工作空间的 `评审条件.md`（4 个章节）、brief 3114 字、含正文与工具指引、
 结论映射保留 `blockIndex=53` 与 `basis`，`RESULT: PASS`。
 
-### 第 4 步：Word 批注输出
+### 第 4 步：Word 批注输出 — ✅ 已完成
 
-- 审查结论 → 构造 `CommentInfo[]` → `saveDocx(parsed, blocks, { comments })`
+- 审查结论 → 构造 `CommentInfo[]` → `saveDocx(parsed, saveBlocks, { comments })`
 - 批注锚定到 run（`commentIds`），要求 commentRangeStart..End 在同一段落内
 - 保存后 .docx 带批注状态
-- 在编辑器中实时看到批注
+- 在编辑器中实时看到批注 ⬅️ 这一条属于第 5 步，尚未做
+
+实现：`docxCommentWriter`（在唯一的 `.mjs` 适配器里）+ `bid_write_comments` 工具。
+
+**做法**：只把需要加批注的块从 `{kind:'original'}` 转成 `{kind:'generated', block}`，
+其余块原样保留；转换时把 `rawPPr` / `runs[].rawRPr` / `styleId` / `list` / `bookmarks` / `sdtShell`
+等所有承载格式的字段原样搬过去，保证那一段重新生成后排版不变。
+表格/图片等不可重建的块不接受批注（记入 `skipped`，不误放）。
+
+**两个必须知道的坑**（都踩过）：
+
+1. **两处 id 必须一致**。document.xml 里的 `w:commentRangeStart w:id="N"` 与 `comments.xml` 里的
+   `w:comment w:id="N"` 若对不上，引擎**会把锚点整段丢掉**——批注还在 comments.xml 里，但文档里没有锚点，
+   Word 里看不到。所以现在用同一套编号。
+2. **`w:id` 必须是整数**，不能用 `F-1` 这种结论编号。因此批注统一编号，
+   `BidCommentWriteResult.ids` 保留「结论 id → 批注 id」的映射用于回报。
+
+**实测（往返，`RESULT: PASS`）**：对样例标书加 4 条批注 → 4 条全部写入且可读回、
+锚点精确落在预期的块（41 / 55 / 66 / 69）、且 `blocks=74 headings=17 tables=3 chars=2201`
+与原文**完全一致**（正文逐字相同、表格逐字相同）——即没有破坏任何原有排版。
 
 ### 第 5 步：UI 集成
 

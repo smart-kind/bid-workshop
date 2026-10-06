@@ -63,15 +63,68 @@ export interface BidDocumentParser {
   parse(filePath: string): Promise<{ parsed: BidParsedDocument; size: number }>;
 }
 
+/** One comment to attach, anchored at the block it was found in. */
+export interface BidCommentAnchor {
+  id: string;
+  author: string;
+  /** ISO timestamp. */
+  date?: string;
+  text: string;
+  blockIndex: number;
+  /** Exact text inside the block to anchor to; when absent the whole block is
+   *  annotated. A quote that is not found falls back to the whole block. */
+  quote?: string;
+}
+
+export interface BidCommentWriteResult {
+  outputPath: string;
+  written: number;
+  /** Comments dropped because their block index was not anchorable. */
+  skipped: string[];
+  /** Which numeric comment id each finding was written as. */
+  ids: Array<{ finding: string; comment: string }>;
+}
+
+/** Writes comments into a copy of a document. */
+export interface BidCommentWriter {
+  write(input: {
+    sourcePath: string;
+    outputPath: string;
+    comments: BidCommentAnchor[];
+  }): Promise<BidCommentWriteResult>;
+}
+
 let parser: BidDocumentParser | null = null;
+let commentWriter: BidCommentWriter | null = null;
 
 /** Install the parser used by every later load. Called once, at extension setup. */
 export function setBidDocumentParser(next: BidDocumentParser): void {
   parser = next;
 }
 
+/** Install the comment writer. Called once, at extension setup. */
+export function setBidCommentWriter(next: BidCommentWriter): void {
+  commentWriter = next;
+}
+
 export function hasBidDocumentParser(): boolean {
   return parser !== null;
+}
+
+export function hasBidCommentWriter(): boolean {
+  return commentWriter !== null;
+}
+
+/** Write comments into a copy of a document through the installed writer. */
+export async function writeBidComments(input: {
+  sourcePath: string;
+  outputPath: string;
+  comments: BidCommentAnchor[];
+}): Promise<BidCommentWriteResult> {
+  if (!commentWriter) {
+    throw new Error("尚未注册批注写入器：无法写出批注");
+  }
+  return commentWriter.write(input);
 }
 
 function blockText(block: BidBlock): string {

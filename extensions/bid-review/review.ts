@@ -76,6 +76,20 @@ export function toBidIssue(finding: FindingInput): BidIssue {
   return issue;
 }
 
+const SEVERITY_LABEL: Record<BidIssue["severity"], string> = {
+  critical: "严重",
+  warning: "警告",
+  info: "提示",
+};
+
+/** The Word comment body shown in the document margin for one finding. */
+export function commentBody(issue: BidIssue): string {
+  const lines = [`【${SEVERITY_LABEL[issue.severity]}】${issue.title}`, issue.description];
+  if (issue.basis) lines.push(`依据：${issue.basis}`);
+  if (issue.suggestion) lines.push(`建议：${issue.suggestion}`);
+  return lines.join("\n");
+}
+
 /**
  * The instruction handed to the model to run one review. The model does the
  * reading and judging; the extension only supplies the document, the conditions

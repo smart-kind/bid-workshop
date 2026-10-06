@@ -1,4 +1,5 @@
-import type { BidDocumentParser } from "./document";
+import type { BidCommentWriter, BidDocumentParser } from "./document";
 
-/** The document engine adapter. Implementation: parser-docx.mjs. */
+/** Document engine adapters. Implementation: parser-docx.mjs. */
 export declare const docxParser: BidDocumentParser;
+export declare const docxCommentWriter: BidCommentWriter;

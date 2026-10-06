@@ -4,13 +4,28 @@ import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerDesktopView } from "@bid-workshop/extension-ui";
 import { BidReview, type BidDocument, type BidReviewState } from "./contract";
-import { describeBid, loadBidDocument, setBidDocumentParser, type LoadedBid } from "./document";
-import { docxParser } from "./parser-docx.mjs";
-import { buildReviewBrief, readCriteria, toBidIssue, type FindingInput } from "./review";
+import {
+  describeBid,
+  loadBidDocument,
+  setBidCommentWriter,
+  setBidDocumentParser,
+  writeBidComments,
+  type BidCommentAnchor,
+  type LoadedBid,
+} from "./document";
+import { docxCommentWriter, docxParser } from "./parser-docx.mjs";
+import {
+  buildReviewBrief,
+  commentBody,
+  readCriteria,
+  toBidIssue,
+  type FindingInput,
+} from "./review";
 
-// Install the document engine adapter once, at module load. Everything below
-// talks to the parser interface rather than to the engine.
+// Install the document engine adapters once, at module load. Everything below
+// talks to the parser and writer interfaces rather than to the engine.
 setBidDocumentParser(docxParser);
+setBidCommentWriter(docxCommentWriter);
 
 /** Parsed documents, keyed by document id. Kept out of the replicated state,
  *  which has to stay serializable, so a later step can write comments back
@@ -245,6 +260,100 @@ export default function bidReview(pi: ExtensionAPI) {
         ],
         details: { count: issues.length, ...counts },
       };
+    },
+  });
+
+  pi.registerTool({
+    name: "bid_write_comments",
+    label: "Write findings as Word comments",
+    description:
+      "Write the recorded findings into a copy of the bid document as native Word comments, anchored at the paragraphs they were found in",
+    parameters: Type.Object({
+      fileId: Type.Optional(Type.String({ description: "文档 id；省略则用最近一次加载的标书" })),
+      outputPath: Type.Optional(
+        Type.String({ description: "输出路径；省略则在原文件旁生成「…-批注.docx」" }),
+      ),
+    }),
+    async execute(_id, input) {
+      const doc = input.fileId
+        ? snapshot.loadedFiles.find((file) => file.id === input.fileId)
+        : snapshot.loadedFiles[snapshot.loadedFiles.length - 1];
+
+      if (!doc) {
+        const message = "没有已加载的标书：请先用 bid_load_document 加载";
+        publish({ ...snapshot, lastError: message });
+        return {
+          content: [{ type: "text", text: message }],
+          details: { outputPath: "", written: 0, unanchored: [] },
+          isError: true,
+        };
+      }
+
+      const anchored: BidCommentAnchor[] = [];
+      const unanchored: string[] = [];
+      const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+      for (const issue of snapshot.issues) {
+        const blockIndex = issue.location?.blockIndex;
+        if (blockIndex === undefined) {
+          unanchored.push(issue.id);
+          continue;
+        }
+        const anchor: BidCommentAnchor = {
+          id: issue.id,
+          author: "AI 审查助手",
+          date: now,
+          text: commentBody(issue),
+          blockIndex,
+        };
+        if (issue.location?.quote !== undefined) anchor.quote = issue.location.quote;
+        anchored.push(anchor);
+      }
+
+      if (anchored.length === 0) {
+        const message =
+          snapshot.issues.length === 0 ? "还没有审查结论" : "结论里没有可定位的 blockIndex";
+        publish({ ...snapshot, lastError: message });
+        return {
+          content: [{ type: "text", text: message }],
+          details: { outputPath: "", written: 0, unanchored },
+          isError: true,
+        };
+      }
+
+      const outputPath = input.outputPath ?? doc.path.replace(/\.docx$/i, "") + "-批注.docx";
+      try {
+        const result = await writeBidComments({
+          sourcePath: doc.path,
+          outputPath,
+          comments: anchored,
+        });
+        const skipped = [...result.skipped, ...unanchored];
+        const note =
+          skipped.length > 0
+            ? `，另有 ${skipped.length} 条因定位缺失未写入（${skipped.join("、")}）`
+            : "";
+        return {
+          content: [
+            {
+              type: "text",
+              text: `已写入 ${result.written} 条批注到 ${result.outputPath}${note}`,
+            },
+          ],
+          details: {
+            outputPath: result.outputPath,
+            written: result.written,
+            unanchored: skipped,
+          },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        publish({ ...snapshot, lastError: message });
+        return {
+          content: [{ type: "text", text: `写入批注失败：${message}` }],
+          details: { outputPath, written: 0, unanchored },
+          isError: true,
+        };
+      }
     },
   });
 
