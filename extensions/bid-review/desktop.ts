@@ -63,8 +63,14 @@ export async function mount(
   let hydrated = false;
   let severityFilter: string | null = null;
   let categoryFilter: string | null = null;
-  /** Outcome of the last write-comments run, shown under the actions. */
-  let commentResult: string | null = null;
+  /** Outcome of the last action that reported back, shown under the actions. */
+  let actionNote: string | null = null;
+
+  /** Surface a failed service call instead of leaving a rejected promise. */
+  function reportFailure(error: unknown) {
+    actionNote = `操作失败：${error instanceof Error ? error.message : String(error)}`;
+    render();
+  }
 
   const SAMPLE_FILES = [
     { name: "投标文件-某软件科技.docx", label: "投标文件 — 某软件科技有限公司" },
@@ -91,7 +97,7 @@ export async function mount(
     // The frame URL carries no query, and the frame is served without an import
     // map, so the panel cannot learn the workspace path here. It sends the bare
     // name and the backend resolves it against the session workspace.
-    service.loadDocument({ filePath: filename }, BACKGROUND_CONTEXT);
+    service.loadDocument({ filePath: filename }, BACKGROUND_CONTEXT).catch(reportFailure);
   }
 
   function render() {
@@ -188,7 +194,7 @@ export async function mount(
     reviewBtn.disabled = state.loadedFiles.length === 0 || state.reviewStatus === "reviewing";
     reviewBtn.addEventListener("click", () => {
       const ids = state.loadedFiles.map((f) => f.id);
-      service.startReview({ fileIds: ids }, BACKGROUND_CONTEXT);
+      service.startReview({ fileIds: ids }, BACKGROUND_CONTEXT).catch(reportFailure);
     });
     actions.appendChild(reviewBtn);
 
@@ -201,13 +207,13 @@ export async function mount(
         commentBtn.disabled = true;
         service.writeComments({ fileId: target.id }, BACKGROUND_CONTEXT).then(
           (result) => {
-            commentResult = `已写入 ${result.written} 条批注：${result.outputPath}${
+            actionNote = `已写入 ${result.written} 条批注：${result.outputPath}${
               result.skipped.length > 0 ? `（${result.skipped.length} 条因缺定位未写入）` : ""
             }`;
             render();
           },
           (error: Error) => {
-            commentResult = `写入批注失败：${error.message}`;
+            actionNote = `写入批注失败：${error.message}`;
             render();
           },
         );
@@ -218,7 +224,9 @@ export async function mount(
     if (state.reviewStatus === "reviewing") {
       const cancelBtn = doc.createElement("button");
       cancelBtn.textContent = "取消";
-      cancelBtn.addEventListener("click", () => service.cancelReview({}, BACKGROUND_CONTEXT));
+      cancelBtn.addEventListener("click", () => {
+        service.cancelReview({}, BACKGROUND_CONTEXT).catch(reportFailure);
+      });
       actions.appendChild(cancelBtn);
     }
 
@@ -226,17 +234,17 @@ export async function mount(
     exportBtn.textContent = "导出报告";
     exportBtn.disabled = state.reviewStatus !== "done" || state.issues.length === 0;
     exportBtn.addEventListener("click", () => {
-      service.exportReport({ format: "markdown" }, BACKGROUND_CONTEXT);
+      service.exportReport({ format: "markdown" }, BACKGROUND_CONTEXT).catch(reportFailure);
     });
     actions.appendChild(exportBtn);
 
     view.appendChild(actions);
 
-    if (commentResult) {
+    if (actionNote) {
       const note = doc.createElement("p");
       note.className = "bid-notice";
       note.dataset.commentResult = "1";
-      note.textContent = commentResult;
+      note.textContent = actionNote;
       view.appendChild(note);
     }
 

@@ -364,45 +364,33 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
    软链时代这个问题被掩盖，变成真目录后才暴露。
 2. `.gitignore` 的 `*.js` 规则会吃掉 vendored 包里自带的 JS 文件，已加 `!vendor/**/*.js` 例外。
 
+## CI 现状（重要）
+
 **CI 从首次提交起从未通过。** 已核实 `gh run list`：`feat: initial bid-workshop project`（run 37297329248）即 `failure`，
-之后每次 push 都失败。不是一个 bug，而是推送时就没到绿灯状态：
+之后每次 push 都失败。推上去时就不是绿灯状态，且有多个独立原因：
 
-| 关卡                 | 状态                   | 说明                                                                                                                             |
-| -------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `format:check`       | ❌ **仍红**            | 全仓库 16 个文件不符合 Prettier（`apps/desktop/*`、`eslint.config.mjs`、`scripts/*.mjs` 等），均非本轮引入。本轮涉及的文件已修好 |
-| `check:workspaces`   | ✅ 已修                | `extensions/bid-review` 从首次提交起缺 `typecheck` 脚本；已补 tsconfig 与脚本                                                    |
-| `typecheck`          | ✅ 已可过（无 vendor） | 见下                                                                                                                             |
-| `check:architecture` | ✅ 通过                |                                                                                                                                  |
+| 关卡                 | 状态    | 说明                                                                                                                        |
+| -------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `format:check`       | ✅ 已修 | 曾有 17 个**既有**已提交文件不符合 Prettier（`apps/desktop/*`、`eslint.config.mjs`、`scripts/*.mjs` 等），已统一格式化      |
+| `lint`               | ✅ 已修 | `extensions/bid-review` 的 typed lint 一直在找 `extensions/tsconfig.lint.json`——**该文件从未创建过**；vendored 源码也需排除 |
+| `check:workspaces`   | ✅ 已修 | `extensions/bid-review` 从首次提交起缺 `typecheck` 脚本（缺 tsconfig）                                                      |
+| `typecheck`          | ✅ 通过 | 16 个 workspace 全过，含全部 vendored 包与 `apps/desktop`                                                                   |
+| `check:architecture` | ✅ 通过 |                                                                                                                             |
 
-### vendor 与 CI：**已从根上解决**（原先靠「解耦」绕开）
+### vendor 与 CI：已从根上解决
 
-原先 `vendor/genoffice/*` 是 gitignore 的、指向仓库外的 symlink，CI 上不存在，于是：
+原先 `vendor/genoffice/*` 是 gitignore 的、指向仓库外的 symlink，于是**任何被 CI typecheck 的文件
+import `@genoffice/*` 都会失败**（`apps/desktop` 也在覆盖内，挪到应用层也没用），而且 **vendor 存在时
+`pnpm install --frozen-lockfile` 必失败**。现在源码已入库，两点都不再成立——详见「第 1 条：项目自足性」。
 
-- 只要**任何被 CI typecheck 的文件 import `@genoffice/*`**，typecheck 就失败（`apps/desktop` 也在覆盖内，挪到应用层也没用）
-- **vendor 存在时 `pnpm install --frozen-lockfile` 会失败**：lockfile 里没有 vendor 包的 importer，
-  而这恰恰是全新 clone 与 CI 走的安装路径。这种 vendoring 方式从一开始就与 frozen install 不兼容，
-  此前没有任何代码依赖 vendor，所以问题一直被掩盖。
+### 扩展前端 bundle 是签入的
 
-**现在 vendor 源码已入库并纳入版本控制**，随之：
+`extensions/bid-review/dist/` 下的两个前端 bundle **签入版本控制**，与 `examples/desktop-extensions/*/dist/` 同一约定：
+扩展视图的 frame 运行时直接从磁盘加载，没有构建步骤，clone 下来必须就有。
 
-- `pnpm install --frozen-lockfile` 通过（17 个 workspace 项目，lockfile 含 10 个 vendor importer）
-- `@genoffice/*` 在任何机器上都解析得到，typecheck 不再有「模块找不到」的问题
-- `.npmrc` 增加 `link-workspace-packages=true`：vendored 包内部的 `"*"` 依赖必须链接本地副本，
-  否则 pnpm 会去 npm registry 找 `@genoffice/agent-core` 之类的包而失败（软链时代这个坑被掩盖了）
-- `vendor/tsconfig.base.json` 必须随代码一起入库：vendored 包的 `tsconfig.json` 写的是
-  `"extends": "../../tsconfig.base.json"`（原上游仓库根的文件），缺了它 tsc 会退回 target ES5 并报一堆错
-
-**仍然保留的解耦**（现在是设计选择，不再是 CI 权宜）：`document.ts` 定义自己的结构化类型与
-`BidDocumentParser` 端口，`parser-docx.mjs` 是唯一 import 引擎的文件，`index.ts` 在加载时注入。
-这一步已不再是为了绕开 CI，而是把引擎依赖收在一个接缝里。
-
-**代价（须知）**：适配器是普通 JS，不被 tsc 检查；`scripts/build-sample-bid.ts` 也从 tsconfig 的 `include` 中排除了
-（它同样 import 引擎）。这两个文件的正确性靠运行期验证，不靠类型检查。
-
-### 若要 CI 全绿
-
-`format:check` 还剩 16 个**既有**违规文件，多数在 `apps/desktop/`，是正在编辑的代码，本轮没有擅自重排。
-把它们统一 `pnpm format --write` 之后，CI 才有机会全绿——建议当作独立的一次清理单独提交。
+在此之前**没有任何流水线构建过它**——`apps/desktop` 的 build 不含扩展，`start-dev.sh` 只构建 shared 包，
+`.gitignore` 又把它排除。这正是 core lane 测试会卡在 `data-state="mounting"` 的原因之一。
+`node extensions/bid-review/build.mjs --check`（挂在 `build:check` 与 `test`）会在签入的 bundle 与源码不一致时失败。
 
 ---
 
@@ -718,3 +706,13 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
     `.gitignore` 加 `!vendor/**/*.js`（`*.js` 规则会吃掉 vendored 的 JS）、
     `.prettierignore` 加 `/vendor/`（588 个上游格式文件不该被本仓库重排）。
 32. `scripts/link-genoffice.mjs` → `scripts/sync-genoffice.mjs`（从上游复制更新，结果是可评审的文件改动）。
+
+**2026-10-06（第九轮：CI 转绿）**：
+
+33. **修掉 CI 的其余红灯**：`format:check`（17 个既有未格式化文件）、`lint`
+    （`extensions/tsconfig.lint.json` **从未创建过**，扩展的 typed lint 一直在报解析错误；vendored 源码需排除）。
+34. **扩展前端 bundle 签入**（与 `examples/desktop-extensions/*/dist/` 同一约定）：
+    此前**没有任何流水线构建过它**，`.gitignore` 还把它排除，所以面板前端产物在任何 clone/CI 上都不存在。
+    `build.mjs` 改为 examples 的风格（absWorkingDir / outfile / minify / `--check`），只构建两个被引用的前端入口
+    （`dist/index.js` 无人引用，已停建），并挂上 `build:check` 与 `test` 守卫陈旧。
+35. **面板在真实 Electron 上通过**（压缩后的 bundle，`1 passed`）。

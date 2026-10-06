@@ -24,6 +24,10 @@ export default [
   {
     ignores: [
       "**/node_modules/**",
+      // Vendored genoffice sources are upstream's, checked in so a clone builds.
+      // They are not this project's source and some are browser-injected
+      // fragments that do not parse as modules on their own.
+      "vendor/**",
       "extensions/*/dist/**",
       // Generated output lives at repository/workspace roots, never anywhere
       // named "release" or "build" inside product source.

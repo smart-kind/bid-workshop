@@ -215,9 +215,15 @@ export async function mount(
   const unsubscribeState = () => {};
   let unsubscribe = unsubscribeState;
 
+  /** Surface a failed read instead of leaving a rejected promise. */
+  function reportFailure(error: unknown) {
+    bodyError = error instanceof Error ? error.message : String(error);
+    render();
+  }
+
   function onState() {
     const state = service.state.value;
-    if (state) void ensureBody(state);
+    if (state) ensureBody(state).catch(reportFailure);
     render();
   }
 

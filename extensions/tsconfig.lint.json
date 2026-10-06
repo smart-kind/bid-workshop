@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "rootDir": "."
+  },
+  "include": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
+  "exclude": [
+    "**/node_modules",
+    "**/dist",
+    "**/dist-electron",
+    "**/out",
+    "**/build",
+    "**/release",
+    "**/release-*",
+    "**/test-results",
+    "**/playwright-report"
+  ]
+}

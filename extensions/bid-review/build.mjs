@@ -1,35 +1,45 @@
 import { build } from "esbuild";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
-// The two entries run in different places and need different treatment.
+// The extension's browser bundles are checked in, the same way the desktop
+// extension examples check theirs in: the frame is served from disk with no
+// build step at run time, so a clone has to have them. `--check` fails when a
+// committed bundle no longer matches its source.
 //
-// desktop.ts is loaded by the desktop app inside an extension frame. That frame
-// is served as a plain document with no import map, so it can only follow
-// relative specifiers: any bare import left in the output fails to resolve and
-// the whole module graph never executes. It therefore has to be bundled
-// self-contained.
-//
-// index.ts is the Node-side entry, loaded from source by the host. Its
-// dependencies (the document engine, the pi packages) resolve at runtime, so
-// they stay external rather than being inlined into a node bundle.
-//
-// Splitting is off: a shared chunk between a browser bundle and a node bundle
-// would drag node-only code into the frame.
-await build({
-  entryPoints: ["index.ts"],
-  bundle: true,
-  format: "esm",
-  outdir: "dist",
-  platform: "node",
-  external: ["@earendil-works/*", "@bid-workshop/*", "@genoffice/*", "node:*"],
-  splitting: false,
-});
+// index.ts is deliberately not built: the host loads the extension from its
+// source, and nothing reads a compiled dist/index.js.
+const directory = fileURLToPath(new URL(".", import.meta.url));
+const check = process.argv.includes("--check");
 
-await build({
-  entryPoints: ["desktop.ts", "document-desktop.ts"],
-  bundle: true,
-  format: "esm",
-  outdir: "dist",
-  platform: "browser",
-  external: [],
-  splitting: false,
-});
+const entries = ["desktop", "document-desktop"];
+const stale = [];
+
+for (const name of entries) {
+  const result = await build({
+    absWorkingDir: directory,
+    entryPoints: [`${name}.ts`],
+    outfile: `dist/${name}.js`,
+    bundle: true,
+    platform: "browser",
+    format: "esm",
+    target: "es2022",
+    minify: true,
+    legalComments: "none",
+    sourcemap: false,
+    write: !check,
+  });
+  if (check) {
+    const committed = await readFile(new URL(`./dist/${name}.js`, import.meta.url));
+    if (!committed.equals(Buffer.from(result.outputFiles[0].contents))) stale.push(name);
+  }
+}
+
+if (check) {
+  if (stale.length > 0) {
+    throw new Error(
+      `bid-review browser bundle is stale (${stale.join(", ")}). Run node extensions/bid-review/build.mjs`,
+    );
+  }
+  console.log("bid-review browser bundles match their source.");
+}

@@ -65,3 +65,5 @@ patches/
 
 # Checked-in browser builds for the installable extension examples.
 /examples/desktop-extensions/*/dist/
+# Same for the bid-review extension's own bundles: minified build output.
+/extensions/*/dist/

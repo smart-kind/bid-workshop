@@ -33,8 +33,11 @@ index.html
 *-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9].js
 *-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9].css
 
-# Extension build output
-extensions/*/dist/
+# Extension browser bundles are checked in, like the desktop extension
+# examples': the frame is served from disk at run time, so a clone needs them.
+# Keep them honest with `node extensions/bid-review/build.mjs --check`.
+!extensions/*/dist/
+!extensions/*/dist/**
 
 # Vendored genoffice sources are checked in, so a clone builds with no upstream
 # checkout. Placed after the `*.js` rule so the few plain-JS files they ship
