@@ -163,12 +163,26 @@
 - 写盘用「临时文件 + rename」的原子写法，并保留原文件权限位。
 - 所有文档通道都校验 **sender 必须是已登记的文档视图 webContents**（现在 `installIpc()` 完全不校验，这是要修的）。
 
-**F3 — 主进程直接用 docx-engine 做「无界面」文档操作。**
-理由是 D12/D13 需要一个不依赖打开编辑器的路径（AI 生成文件、批量改文件），
+**F3 — 主进程的「无界面」文档能力（spike 已做，结论如下）。**
+理由：D12/D13 需要一条不依赖打开编辑器的路径（AI 生成文件、改文件），
 而且这本来就是「库的能力」。
-风险：`@genoffice/docx-engine` 没有 build，`exports` 指向 `.ts`，主进程运行时不能直接 require。
-**先做 spike**（见 S1.5）确定是「electron-vite 把 `@genoffice/*` 打进主进程 bundle」还是「给 docx-engine 加一个真的 tsc build」。
-两者都比「加别名」干净；**优先选能把 vendor 变成普通包的那个**。
+
+**spike 实测结果（这一条别再重试同样的两次尝试）：**
+
+- **打包这关没问题**：把 `@genoffice/docx-engine` 加进 `electron.vite.config.mjs` 的
+  `externalizeDeps.exclude`，它就真的被打进 `out/main/main.js`（963 KB → **2.23 MB**，
+  `parseDocx` 与 JSZip 都在产物里）。这证明了主进程能用这个引擎。
+- **但主进程的项目没法给它做类型检查**，两条路都试过、都被实测否掉：
+  - 主进程的 tsconfig 继承 `NodeNext`，而 vendored 包内部是**无扩展名的相对导入**（bundler 风格）。
+    改成 `moduleResolution: bundler` 能读它，但会让 `Response` 这类全局声明换一个来源，
+    现有主进程代码立刻冒出 10 个类型错误。
+  - 再给 `lib` 加上 DOM 想压住它们，结果把引擎源码整个拖进主进程的严格检查
+    （主进程开了 `noUncheckedIndexedAccess`，引擎没开）→ **400 个错**。
+
+**决定**：能力放进**自己的 workspace 包**（自带 tsconfig，按引擎那套设置来，
+包内部用带 `.js` 扩展名的相对导入），main 以普通依赖引用它，它再被打进 main bundle。
+这样主进程的项目永远看不到引擎源码——`packages/document-editor` 走的也是「自己的 tsconfig + 自己构建」这条路。
+（「给 docx-engine 自己加一个 tsc build」也考虑过：它的产物里仍是无扩展名导入，运行时还是不成，故不选。）
 
 **F4 — 编辑能力两条路都接，但各司其职。**
 
