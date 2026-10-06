@@ -297,16 +297,20 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 |---|---|
 | pi-gui 壳 fork 到 bid-workshop | ✅ 已完成 |
 | 品牌改名 + 移除无关模块 | ✅ 已完成 |
-| genoffice 包引入（symlink） | ✅ 已完成，链接全部有效 |
-| GitHub 仓库 (smart-kind/bid-workshop) | ✅ 已创建并推送，分支 `main` |
-| bid-review 扩展 | ⚠️ **不是"空壳"**：已有完整 mock 实现（见下） |
-| 样例工作空间 | ⚠️ **部分完成**：`workspaces/bid-sample`、`workspaces/rangli-review` 已存在，但样例是 **JSON 不是 .docx** |
-| **文档加载链路**（docx → 结构化数据） | ❌ 未做。全项目**零 `@genoffice` 引用**，一行都没接上 genoffice |
+| genoffice 包引入（symlink） | ✅ 已完成，链接全部有效（10 个包） |
+| GitHub 仓库 (smart-kind/bid-workshop) | ✅ 已创建并推送，分支 `main`，**公开仓库** |
+| bid-review 扩展 | ⚠️ 已有完整 mock 实现（已提交 `36d94cf`） |
+| workspace-harness 复用通道 | ✅ 已打通（子路径 exports，实测可 import） |
+| **样例标书 .docx** | ✅ 已完成（`workspaces/bid-sample/投标文件-某软件科技.docx`，含 6 个埋点） |
+| 评审条件 | ✅ 已完成（`workspaces/bid-sample/评审条件.md`） |
+| 期望输出（带批注的 .docx） | ❌ 未做 |
+| manifest.json | ❌ 未做 |
+| **文档加载链路**（docx → 结构化数据） | ❌ 未做。从未与扩展代码对接（仅脚本层用过 `parseDocx`） |
 | AI 审查逻辑 | ❌ 未做，目前是定时器 + 写死的样例数据 |
-| Word 批注输出 | ❌ 未做 |
+| Word 批注输出 | ❌ 未做。机制已验证可行，未接进产品 |
 | UI 集成 | ⚠️ 面板 UI 已有（接的是 mock service）；右侧文档区未接 |
 
-**bid-review 已有的实际代码**（均为本地未提交/未跟踪）：
+**bid-review 已有的实际代码**（已提交，`36d94cf`）：
 
 | 文件 | 规模 | 内容 |
 |---|---|---|
@@ -314,8 +318,10 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 | `extensions/bid-review/index.ts` | 195 行 | 3 个工具（`bid_load_document` / `bid_start_review` / `bid_export_report`）+ 命令 + desktop view 注册 + facet service |
 | `extensions/bid-review/desktop.ts` | 375 行 | 完整面板 UI：严重度/类目筛选、进度条、统计卡、结论列表 |
 | `extensions/bid-review/mock-review.ts` | 105 行 | 写实的中文审查结论样例（市政道路改造工程，5+ 条，含 critical/warning/info） |
+| `extensions/bid-review/scripts/build-sample-bid.ts` | — | 样例标书生成器（`pnpm --filter @bid-workshop/extension-bid-review run build:sample-bid`） |
 
-⚠️ **风险**：以上文件以及 `workspaces/`、`start-dev*.sh` 全部**未提交且未跟踪**，一次 `git clean -fd` 即全部丢失，也没有备份在远端。
+> ⚠️ **公开仓库**：`smart-kind/bid-workshop` 是 public（已核实 `isPrivate: false`）。
+> 样例数据必须虚构。真实材料（客户名、合同金额、营业执照、财务报表）只存在于同级 `bid-workshop/资料/`，**不得进入本仓库**。
 
 ---
 
@@ -339,58 +345,38 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 3. **`doc_*` 工具是活编辑器工具**——`doc_add_comment` 走 `docEditBridge`，需要第 5 步的编辑器联动到位才能用；
    无头路径见「2026-10-05 实测结果」（已跑通，但需自己处理段落转换）。
 
-### 第 1 步：建立样例工作空间
+### 第 1 步：建立样例工作空间（部分完成）
 
-在 bid-workshop 里初始化一个样例工作空间，包含：
+1. **一份样例标书** .docx — ✅ **已完成**（`757e0d9`）
 
-1. **一份样例标书** .docx — **已决定：以真实投标材料为基底组装**，不再假造。
+   产物：`workspaces/bid-sample/投标文件-某软件科技.docx`（5 章、17 标题、3 张表），
+   生成器：`extensions/bid-review/scripts/build-sample-bid.ts`，用
+   `pnpm --filter @bid-workshop/extension-bid-review run build:sample-bid` 重跑。
+   文档用 `buildBlankDocx` 造底 + generated 块 + `saveDocx` 落盘，表格用
+   `generateTableXml` + `patchTableCellTexts`。
 
-   基底材料在同级 `bid-workshop/资料/`：
+   **埋入的 6 个问题**（均已核实真实存在）：
 
-   | 材料 | 用途 |
-   |---|---|
-   | `公司简介(智善科技).docx` | 公司简介 / 资质章节的正文来源 |
-   | `合同协议集20260930.xlsx` | 业绩、合同章节的表格来源 |
-   | `营业执照.jpg` | 证照扫描件（可作为图片插入 / 或仅作文本描述） |
-   | `ISO证书/`（质量、环境、职业健康安全三张 png） | 资质证明章节 |
-   | `财务报表/`（2021–2025 年度审计报告与财务报表 pdf） | 财务与商务章节 |
-   | `软件著作权登记证书/`（png） | 技术实力佐证 |
+   | # | 问题 | 证据 |
+   |---|---|---|
+   | 1 | 报价合计错误 | 明细合计 850,000，合计却写 800,000；且文中声称「明细合计与总价一致」 |
+   | 2 | 缺签章 | 「投标人（盖章）」「法定代表人或授权代表（签字）」两处为空 |
+   | 3 | 技术方案缺章节 | 无「项目管理计划」「质量保证措施」 |
+   | 4 | 工期超限 | 承诺 195 日历天，评审条件要求 ≤180 |
+   | 5 | 证明材料未附 | 称「详见附件一/附件二」，实际无附件 |
+   | 6 | 无页码 | 无页眉页脚、无 PAGE 域 |
 
-   组装出的标书应包含典型章节：封面、目录、公司简介与资质、技术方案（含段落和表格）、报价表、服务承诺，
-   并**故意保留/埋入几个典型问题**（缺少签章、报价计算错误、技术方案缺关键章节等），让审查有东西可抓。
+   > ⚠️ **脱敏是硬要求**。基底材料取自同级 `bid-workshop/资料/`（真实公司简介、合同协议集），
+   > 但 `smart-kind/bid-workshop` 是**公开仓库**（已核实 `isPrivate: false`）。
+   > 因此产物里的公司名、客户名、合同金额**全部替换为虚构值**，「某」占位风格与仓库既有样例一致。
+   > **真实材料（客户名、合同金额、营业执照、财务报表、软著证书）不得进入本仓库。**
+   > 若将来需要更真实的样例，正确做法是把仓库改为 private，而不是把真实数据提交进公开仓库。
 
-   > 实现提示：用 `buildBlankDocx(...)` 造底 + `saveDocx` 落盘；插入图片走 `SaveBlock` 的 `{kind:'image'}`。
-   > 造演示 .docx 的现成范式可抄上游 `workspace-harness/src/workspace/demo.ts` 的 `provisionDemoWorkspace()`。
-   > 现有 `workspaces/bid-sample/sample-bid.json` 的章节文本可以并入。
-   >
-   > 注意：真实材料含营业执照、财务数据等敏感信息，**进仓库前需要确认是否可以提交**，或者只提交脱敏版本。
+2. **一份评审条件** — ✅ **已完成**（`workspaces/bid-sample/评审条件.md`），四类维度与上面 6 个埋点一一对应。
 
-2. **一份评审条件** — Markdown 或 JSON，列出审查维度和标准：
-   ```markdown
-   # 标书评审条件
-   ## 资质审查
-   - 必须包含有效的营业执照信息
-   - 必须具备相关行业资质证明
-   
-   ## 技术方案
-   - 必须包含完整的实施方案
-   - 必须有项目管理计划
-   - 必须有质量保证措施
-   
-   ## 商务审查
-   - 报价必须包含明细
-   - 总价必须与明细合计一致
-   - 必须有有效期承诺
-   
-   ## 格式审查
-   - 必须有目录
-   - 必须有页码
-   - 关键页面必须有签章
-   ```
+3. **期望输出** — ❌ **未做**：一份带批注的 .docx（或运行时动态生成），展示审查效果
 
-3. **期望输出** — 一份带批注的 .docx（或运行时动态生成），展示审查效果
-
-4. **manifest.json** — 工作空间元数据
+4. **manifest.json** — ❌ **未做**：工作空间元数据（依赖第 0 步的四区模型决策）
 
 ### 第 2 步：文档加载链路
 
@@ -497,6 +483,14 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
     **该改动尚未在上游仓库提交。**
 11. **实测证明无头写批注可行**：`GeneratedBlock.runs[].commentIds` + `SaveOptions.comments` → `saveDocx` → 重新 `parseDocx` 能读回批注与锚点，不需要 Tiptap 编辑器。
 12. **第 0 步改为通道已打通**；第 1 步样例标书改为**以真实投标材料为基底**（同级 `bid-workshop/资料/`）。
+
+**2026-10-06（第三轮：第 1 步落地）**：
+
+13. **第 1 步部分完成**：产出样例标书 `workspaces/bid-sample/投标文件-某软件科技.docx`（5 章、17 标题、3 张表、6 个埋点）
+    与 `评审条件.md`；生成器 `extensions/bid-review/scripts/build-sample-bid.ts` 已装成可重跑脚本（`build:sample-bid`）。
+14. **发现并处理公开仓库风险**：`smart-kind/bid-workshop` 是 **public**（`gh repo view` 核实 `isPrivate: false`）。
+    真实材料含客户名与合同金额（197 万 / 131 万 / 54 万等），产物与生成器**已全部脱敏**为虚构值；
+    真实数据只留在同级 `bid-workshop/资料/`，不进本仓库。此项已写进「当前状态」作为长期约束。
 
 
 
