@@ -27,7 +27,7 @@
     "build": "tsc -p tsconfig.json && node scripts/build-browser.mjs",
     "watch": "node scripts/watch.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "pnpm run build && node --test \"test/**/*.test.mts\""
+    "test": "pnpm run build && node --experimental-strip-types --test \"test/**/*.test.mts\""
   },
   "dependencies": {
     "@earendil-works/chord": "^1.0.0"
