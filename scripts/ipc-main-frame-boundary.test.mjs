@@ -17,6 +17,12 @@ const rawIpcAllowlist = new Map([
       "resolve the sender window but do not gate on the frame; subframes receive no preload. " +
       "Migrating them is a separate change; the channels below must not regress to raw handlers.",
   ],
+  [
+    `${electronDir}/ipc/document-view-ipc.ts`,
+    "the hosted document editor runs in its own WebContentsView, so it is never the window's " +
+      "main frame and mainFrameHandler cannot gate it. The module refuses any sender that is " +
+      "not a document view the owner created, which is the same guarantee for this surface.",
+  ],
 ]);
 
 // Channels whose handlers must reject anything other than the owned window's main frame.

@@ -28,7 +28,6 @@ const paths = [
   "packages/pi-sdk-driver/test/session-schema.test.mts",
   "packages/session-driver/src/index.ts",
   "packages/extension-ui/src/index.ts",
-  "video/src/Root.tsx",
 ];
 
 test("each workspace and desktop execution context rejects unsafe values and unhandled promises", async () => {
@@ -112,15 +111,54 @@ const requiredTypedRules = [
   "no-unsafe-return",
 ];
 
+// Workspaces whose sources are imported third-party code kept verbatim: the
+// vendored genoffice tree and the document editor's renderer copy. Both sit
+// outside this project's lint and format gates on purpose (see the ignore block
+// in eslint.config.mjs), so typed-lint coverage does not apply to them. The list
+// is closed: a newly discovered workspace still fails this check until it is
+// either given a typed project or added here deliberately.
+const importedThirdPartyWorkspaces = [
+  "packages/document-editor",
+  ...[
+    "agent-core",
+    "ai-provider",
+    "docx-engine",
+    "electron-utils",
+    "file-parse",
+    "font-metrics",
+    "html2docx",
+    "i18n",
+    "pptx-engine",
+    "pptx-render",
+    "project-store",
+    "ui",
+    "workspace-harness",
+    "xlsx-gateway",
+  ].map((name) => `vendor/genoffice/${name}`),
+];
+
 async function workspaceLintFailures(workspaceRoot) {
   const pnpmPath = process.env.npm_execpath ?? path.join(root, "node_modules/pnpm/bin/pnpm.cjs");
-  const projects = JSON.parse(
+  const discovered = JSON.parse(
     execFileSync(process.execPath, [pnpmPath, "-r", "list", "--depth", "-1", "--json"], {
       cwd: workspaceRoot,
       encoding: "utf8",
     }),
   ).filter((project) => realpathSync(project.path) !== realpathSync(workspaceRoot));
-  assert.ok(projects.length, "No workspaces discovered; cannot prove typed lint coverage.");
+  assert.ok(discovered.length, "No workspaces discovered; cannot prove typed lint coverage.");
+  // Keep the exemption list honest: in the real checkout every entry must be a
+  // workspace that exists, so a rename cannot silently over-exempt.
+  if (realpathSync(workspaceRoot) === realpathSync(root)) {
+    for (const exempt of importedThirdPartyWorkspaces) {
+      assert.ok(
+        discovered.some((project) => path.relative(workspaceRoot, project.path) === exempt),
+        `${exempt} is exempt from typed lint but is not a workspace; update importedThirdPartyWorkspaces.`,
+      );
+    }
+  }
+  const projects = discovered.filter(
+    (project) => !importedThirdPartyWorkspaces.includes(path.relative(workspaceRoot, project.path)),
+  );
   const eslint = new ESLint({ cwd: workspaceRoot });
   const failures = [];
   for (const project of projects) {

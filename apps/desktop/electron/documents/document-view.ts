@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
-import { ipcMain, protocol, WebContentsView, type BrowserWindow } from "electron";
-import { DOCUMENT_IPC, DOCUMENT_VIEW_SCHEME } from "./document-channels";
+import { protocol, WebContentsView, type BrowserWindow } from "electron";
+import { DOCUMENT_VIEW_SCHEME } from "./document-channels";
+import { registerDocumentViewIpc } from "../ipc/document-view-ipc";
 
 /**
  * The document editor (`packages/document-editor`) is a standalone static
@@ -87,11 +88,10 @@ export class DocumentViewOwner {
 
   /** Register the doc preload's boot IPC. Called once before any view is created. */
   installIpc(): void {
-    ipcMain.handle(DOCUMENT_IPC.consumePendingOpen, (event) =>
-      this.pendingDocument(event.sender.id),
-    );
-    ipcMain.handle(DOCUMENT_IPC.consumeNewBlank, () => false);
-    ipcMain.handle(DOCUMENT_IPC.consumeAiDocContent, () => null);
+    registerDocumentViewIpc({
+      pendingDocumentForSender: (senderId) => this.pendingDocument(senderId),
+      hasSender: (senderId) => this.entryForSender(senderId) !== undefined,
+    });
   }
 
   /** Show `input.absolutePath` in `window`'s document view at `input.rect`, creating the view on first use. */
