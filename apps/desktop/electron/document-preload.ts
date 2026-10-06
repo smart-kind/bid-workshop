@@ -75,8 +75,21 @@ const desktop = {
   getAiSettings: () => Promise.resolve({ provider: "anthropic", providers: {} }),
   setAiSettings: noop,
   print: () => Promise.resolve({ ok: false }),
-  exportPdf: () => Promise.resolve({ ok: false }),
-  exportHtml: () => Promise.resolve({ ok: false }),
+  exportPdf: (
+    defaultName: string,
+    pageWidthTwips: number,
+    pageHeightTwips: number,
+    outPath?: string,
+  ) =>
+    ipcRenderer.invoke(
+      DOCUMENT_IPC.exportPdf,
+      defaultName,
+      pageWidthTwips,
+      pageHeightTwips,
+      outPath ?? null,
+    ),
+  exportHtml: (defaultName: string, html: string, outPath?: string) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.exportHtml, defaultName, html, outPath ?? null),
   printPdfBuffer: () => Promise.resolve({ ok: false }),
   saveMergedPdf: () => Promise.resolve({ ok: false }),
   pickExportImagesTarget: () => Promise.resolve(null),

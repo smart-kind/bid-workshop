@@ -1,5 +1,6 @@
 import {
   BrowserWindow,
+  dialog,
   ipcMain,
   webContents,
   type IpcMainInvokeEvent,
@@ -156,6 +157,54 @@ export function registerDocumentViewIpc(target: DocumentViewIpcTarget): void {
     return readRecentDocuments();
   });
 
+  ipcMain.handle(
+    DOCUMENT_IPC.exportHtml,
+    async (event, rawName: unknown, rawHtml: unknown, rawOut: unknown) => {
+      assertDocumentSender(target, event, DOCUMENT_IPC.exportHtml);
+      const defaultName = withExtension(requireString(rawName, "defaultName"), "html");
+      const html = requireString(rawHtml, "html");
+      const destination =
+        typeof rawOut === "string" && rawOut !== ""
+          ? rawOut
+          : await askSavePath(event.sender, defaultName);
+      if (!destination) return { ok: false };
+      try {
+        await writeDocumentFile(destination, new TextEncoder().encode(html));
+        return { ok: true, path: destination };
+      } catch (error) {
+        return { ok: false, error: messageOf(error) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    DOCUMENT_IPC.exportPdf,
+    async (event, rawName: unknown, rawWidth: unknown, rawHeight: unknown, rawOut: unknown) => {
+      assertDocumentSender(target, event, DOCUMENT_IPC.exportPdf);
+      const defaultName = withExtension(requireString(rawName, "defaultName"), "pdf");
+      const widthTwips = requirePositiveNumber(rawWidth, "pageWidthTwips");
+      const heightTwips = requirePositiveNumber(rawHeight, "pageHeightTwips");
+      const destination =
+        typeof rawOut === "string" && rawOut !== ""
+          ? rawOut
+          : await askSavePath(event.sender, defaultName);
+      if (!destination) return { ok: false };
+      try {
+        // The document renderer prints itself: it holds the paginated, laid-out
+        // document, and Chromium is the only thing here that can produce a PDF.
+        const pdf = await event.sender.printToPDF({
+          pageSize: { width: widthTwips / 1440, height: heightTwips / 1440 },
+          printBackground: true,
+          margins: { marginType: "none" },
+        });
+        await writeDocumentFile(destination, pdf);
+        return { ok: true, path: destination };
+      } catch (error) {
+        return { ok: false, error: messageOf(error) };
+      }
+    },
+  );
+
   // The leave guard's answers. There is no reply to send for an unknown sender,
   // so those are dropped rather than thrown.
   ipcMain.on(DOCUMENT_REPORT.closeCheck, (event, raw: unknown) => {
@@ -283,6 +332,28 @@ function settleLeave(
 function dirtyFromReport(raw: unknown): boolean {
   if (typeof raw !== "object" || raw === null || !("dirty" in raw)) return true;
   return (raw as { dirty?: unknown }).dirty === true;
+}
+
+/** Asks where to write an export; null means the user cancelled. */
+async function askSavePath(contents: WebContents, defaultName: string): Promise<string | null> {
+  const window = BrowserWindow.fromWebContents(contents) ?? undefined;
+  const options: Electron.SaveDialogOptions = { defaultPath: defaultName };
+  const picked = window
+    ? await dialog.showSaveDialog(window, options)
+    : await dialog.showSaveDialog(options);
+  return picked.canceled || !picked.filePath ? null : picked.filePath;
+}
+
+/** The dialog's default name has to carry the extension it is exporting to. */
+function withExtension(name: string, extension: string): string {
+  return new RegExp(`\\.${extension}$`, "i").test(name) ? name : `${name}.${extension}`;
+}
+
+function requirePositiveNumber(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive number.`);
+  }
+  return value;
 }
 
 function joinName(source: string, defaultName: string): string {

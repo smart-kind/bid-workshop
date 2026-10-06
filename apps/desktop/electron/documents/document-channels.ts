@@ -11,6 +11,8 @@ export const DOCUMENT_IPC = {
   saveTo: "bid-docs:save-to",
   writeRecovery: "bid-docs:write-recovery",
   recentFiles: "bid-docs:recent-files",
+  exportHtml: "bid-docs:export-html",
+  exportPdf: "bid-docs:export-pdf",
 } as const;
 
 /** Pushed main → document view. Not invoke channels, so they carry no reply. */
