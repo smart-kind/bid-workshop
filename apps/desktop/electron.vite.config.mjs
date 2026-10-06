@@ -16,7 +16,19 @@ export default defineConfig(({ command }) => {
       plugins: [tsconfigPaths({ projects: [pathsProject] })],
       build: {
         outDir: "out/main",
-        externalizeDeps: { exclude: ["@earendil-works/chord", "@bid-workshop/extension-ui"] },
+        externalizeDeps: {
+          // Bundled instead of required at run time: these workspace packages ship
+          // TypeScript sources (their `exports` point at src/*.ts), which Node cannot
+          // load out of out/main. The document capability is the shell's own now, so
+          // it travels inside the bundle.
+          exclude: [
+            "@earendil-works/chord",
+            "@bid-workshop/extension-ui",
+            "@bid-workshop/document-service",
+            "@genoffice/docx-engine",
+            "@genoffice/pptx-engine",
+          ],
+        },
         emptyOutDir: cleanOutputs,
         rollupOptions: {
           input: {

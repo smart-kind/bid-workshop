@@ -39,6 +39,7 @@ import {
   documentSchemePrivileges,
   installDocumentProtocol,
 } from "./documents/document-view";
+import { readDocumentText } from "@bid-workshop/document-service";
 import { ReviewOwner } from "./workbench/review-owner";
 import { registerDesktopIpc } from "./ipc/register-desktop-ipc";
 import {
@@ -1127,6 +1128,8 @@ app
             runOrchestrationRuntimeToolForTest(orchestrationRuntimeBridge, input),
           runScheduledTaskRuntimeTool: (input: ScheduledTaskRuntimeToolTestInput) =>
             runScheduledTaskRuntimeToolForTest(scheduledTaskRuntimeBridge, input),
+          readDocumentTextForTest: async (filePath: string) =>
+            readDocumentText(new Uint8Array(await readFile(filePath))),
           fireDueScheduledTasks: (nowIso?: string) =>
             store.fireDueScheduledTasks(nowIso ? new Date(nowIso) : undefined),
           setDeferredThreadTitleMode: () => {

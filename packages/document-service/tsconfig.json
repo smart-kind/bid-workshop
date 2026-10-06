@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    // The vendored genoffice packages import each other without file extensions,
+    // which is what a bundler-resolved package looks like; NodeNext cannot read
+    // them. This package is typechecked on its own precisely so that the main
+    // process never has to (see docs/shell-plan.md F3).
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "composite": false,
+    "declarationMap": true,
+    "emitDeclarationOnly": false,
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*.ts"]
+}

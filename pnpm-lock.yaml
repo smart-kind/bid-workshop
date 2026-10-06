@@ -94,6 +94,9 @@ importers:
       '@bid-workshop/catalogs':
         specifier: workspace:*
         version: link:../../packages/catalogs
+      '@bid-workshop/document-service':
+        specifier: workspace:*
+        version: link:../../packages/document-service
       '@bid-workshop/extension-ui':
         specifier: workspace:*
         version: link:../../packages/extension-ui
@@ -454,6 +457,12 @@ importers:
       vite:
         specifier: ^6.2.0
         version: 6.4.1(@types/node@24.12.2)(jiti@2.7.0)(terser@5.46.1)(tsx@4.23.15)(yaml@2.9.0)
+
+  packages/document-service:
+    dependencies:
+      '@genoffice/docx-engine':
+        specifier: workspace:*
+        version: link:../../vendor/genoffice/docx-engine
 
   packages/extension-ui:
     dependencies:
