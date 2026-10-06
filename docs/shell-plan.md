@@ -217,6 +217,26 @@
 该模块以说明理由的方式进入守卫的 `rawIpcAllowlist`。
 顺带修掉一个真实漏洞：原来这三个 boot channel 对**任何** sender 都应答。
 
+**F11 — 应用身份：改「发布身份」，不改「持久化契约」。**
+盘出来的事实分两类：
+
+- **发布身份仍全是上游的**：`electron-builder.yml` 的 `appId: com.pi-gui.desktop`、`productName: pi-gui`、
+  `copyright: Copyright 2026 Matthew Lam`、`linux.maintainer/vendor`、`deb.packageName`、
+  `publish.owner: minghinmatthewlam / repo: pi-gui`；约 15 个打包脚本里另有产品名/文件名常量；
+  `electron/platform/update-checker.ts` 的 `RELEASES_URL` **指向上游仓库——我们的应用会去查上游的更新**，
+  对一个独立产品是错的。
+- **另一批字符串是持久化契约**：`pi-gui.card` / `pi-gui.pin`（写进会话 JSONL）、`PI_GUI_LEASE_SURFACE`、
+  `refs/pi-gui/snapshots/`（写进用户仓库的 git 引用）、`~/.pi-gui/catalogs.json`、一批 localStorage key。
+  **改这些只会孤立已有数据，收益为零。**
+
+决定：
+
+1. **改发布身份**：`electron-builder.yml` + 打包脚本里的产品名常量 + `publish` + `update-checker` 的目标。
+   产品名用 **`Bid Workshop`**（与仓库名、`@bid-workshop/desktop`、包描述一致），
+   `appId` 用 `com.bid-workshop.desktop`。**这是个可以随手改回的产品决定**，换成别的名字只是改字符串。
+2. **不动持久化契约**（上面第二类），并记在这里，免得以后有人「顺手统一命名」把用户数据搞丢。
+3. Homebrew tap、上游 release workflow 这些**我们不发布的**基础设施，按 `docs/目标与计划.md` §11 处理（不是我们的，删）。
+
 ---
 
 ## 五、工作项
@@ -386,12 +406,12 @@ S3 的 A 组（挂载必需）**要先于** S4，因为 `getAiSettings` 这类�
 
 **初始状态**（`pnpm install --frozen-lockfile` 通过、8.4s；未改任何源文件）：
 
-| 命令 | 初始结果 |
-| --- | --- |
-| `pnpm check` | ❌ 停在 `format:check`（本文档没过 prettier，是我刚加的，修完即绿） |
-| `pnpm test:baseline` | ❌ 6 个失败 |
-| `pnpm --filter @bid-workshop/desktop run build` | ❌ **失败** |
-| `pnpm --filter @bid-workshop/desktop run test:core:document-view` | 没跑到（依赖 build） |
+| 命令                                                              | 初始结果                                                            |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `pnpm check`                                                      | ❌ 停在 `format:check`（本文档没过 prettier，是我刚加的，修完即绿） |
+| `pnpm test:baseline`                                              | ❌ 6 个失败                                                         |
+| `pnpm --filter @bid-workshop/desktop run build`                   | ❌ **失败**                                                         |
+| `pnpm --filter @bid-workshop/desktop run test:core:document-view` | 没跑到（依赖 build）                                                |
 
 **最重的一条：干净 clone 下编辑器包根本编不出来。** 根因是两个**从未提交**的文件：
 
@@ -408,41 +428,54 @@ S3 的 A 组（挂载必需）**要先于** S4，因为 `getAiSettings` 这类�
 
 **其余失败与处理：**
 
-| 失败 | 原因 | 处理 |
-| --- | --- | --- |
-| `ci-guards` / `typed-lint`：`video/src/Root.tsx` 无匹配配置 | 上游的营销视频包不在本仓 | 从两处路径表删掉 |
-| `typed-lint`：`packages/document-editor` + 15 个 `vendor/genoffice/*` 缺 typed project | 它们是**故意**排除的整份第三方拷贝 | F9 |
-| `ipc-main-frame-boundary`：`documents/document-view.ts` 直接用了 `ipcMain` | 真违规 | F10 |
-| `contract-resolution` 两条 | 只是 `pnpm check` 提前挂、`build:shared` 没跑、`packages/*/dist` 不存在 | 顺序问题，非缺陷 |
-| `packages/{catalogs,extension-ui,pi-sdk-driver} test`：`ERR_UNKNOWN_FILE_EXTENSION ".mts"` | 本机 pnpm 全局钉 `use-node-version=22.15.0`，该版本还没默认类型剥离；CI 是 `node-version: 22`（最新 22.x 已默认） | 三个包的 test 脚本显式加 `--experimental-strip-types`（22.6+ 都有，新版为无害 no-op） |
-| `app-operations.spec.ts`：期望相对路径，实到 `../../..` 拼出来的绝对路径 | **真 bug**：`resolveExistingWorkspacePath` 返回 realpath 后的文件，调用方却拿**未解析**的根去算相对路径；macOS 上 `/var/folders` 实为 `/private/var/folders` | 新增 `resolveExistingWorkspaceFile`，同时返回解析后的根与文件，调用方据此算相对路径 |
+| 失败                                                                                       | 原因                                                                                                                                                         | 处理                                                                                  |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| `ci-guards` / `typed-lint`：`video/src/Root.tsx` 无匹配配置                                | 上游的营销视频包不在本仓                                                                                                                                     | 从两处路径表删掉                                                                      |
+| `typed-lint`：`packages/document-editor` + 15 个 `vendor/genoffice/*` 缺 typed project     | 它们是**故意**排除的整份第三方拷贝                                                                                                                           | F9                                                                                    |
+| `ipc-main-frame-boundary`：`documents/document-view.ts` 直接用了 `ipcMain`                 | 真违规                                                                                                                                                       | F10                                                                                   |
+| `contract-resolution` 两条                                                                 | 只是 `pnpm check` 提前挂、`build:shared` 没跑、`packages/*/dist` 不存在                                                                                      | 顺序问题，非缺陷                                                                      |
+| `packages/{catalogs,extension-ui,pi-sdk-driver} test`：`ERR_UNKNOWN_FILE_EXTENSION ".mts"` | 本机 pnpm 全局钉 `use-node-version=22.15.0`，该版本还没默认类型剥离；CI 是 `node-version: 22`（最新 22.x 已默认）                                            | 三个包的 test 脚本显式加 `--experimental-strip-types`（22.6+ 都有，新版为无害 no-op） |
+| `app-operations.spec.ts`：期望相对路径，实到 `../../..` 拼出来的绝对路径                   | **真 bug**：`resolveExistingWorkspacePath` 返回 realpath 后的文件，调用方却拿**未解析**的根去算相对路径；macOS 上 `/var/folders` 实为 `/private/var/folders` | 新增 `resolveExistingWorkspaceFile`，同时返回解析后的根与文件，调用方据此算相对路径   |
 
 **修完之后的基线：**
 
-| 命令 | 结果 |
-| --- | --- |
-| `pnpm check` | ✅ 绿 |
-| `pnpm test:baseline` | ✅ 绿（守卫 108/108、catalogs 29/29、pi-sdk-driver 165/165、extension-ui 9/9、desktop unit 全绿） |
-| `pnpm --filter @bid-workshop/desktop run build` | ✅ 绿 |
-| `pnpm --filter @bid-workshop/desktop run test:core:document-view` | ✅ `1 passed` —— 「看」终于能在干净 clone 上复现 |
+| 命令                                                              | 结果                                                                                              |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `pnpm check`                                                      | ✅ 绿                                                                                             |
+| `pnpm test:baseline`                                              | ✅ 绿（守卫 108/108、catalogs 29/29、pi-sdk-driver 165/165、extension-ui 9/9、desktop unit 全绿） |
+| `pnpm --filter @bid-workshop/desktop run build`                   | ✅ 绿                                                                                             |
+| `pnpm --filter @bid-workshop/desktop run test:core:document-view` | ✅ `1 passed` —— 「看」终于能在干净 clone 上复现                                                  |
 
 ### 8.2 已完成的判定
 
-- **D3 达成**：`pnpm check` 绿、`pnpm test:baseline` 绿。
+- **D3 达成**：`pnpm check` ✅、`pnpm test:baseline` ✅（守卫 108/108、catalogs 29/29、pi-sdk-driver 165/165、extension-ui 9/9、desktop unit 340 过 + 1 跳过）。
 - **D6 达成**：干净 clone 上点 `.docx` 渲染出真实文档内容（core lane spec 通过）。
+- **core lane 全绿**：`pnpm --filter @bid-workshop/desktop run test:e2e:core` → **293 passed / 0 failed**（14.6 分钟）。
+  它是从「7 个失败」过来的，而这 7 个**全都是真 bug，没有一个该被当成「已知失败」**：
+  - 4 个示例视图（github / trace / usage）：三个 bundle 被 `.gitignore` 吞掉（见 F7）。
+  - 2 个 `new-thread-composer` + 1 个 `orchestration-runtime-tools`：本机 `ANTHROPIC_AUTH_TOKEN`
+    泄漏进夹具环境，provider 被当成「已连接」。夹具补进 scrub 清单后即绿。
 - **D2 的前半达成**：干净 clone → install → check → build → 跑 spec，全通。
-- 还欠：D1（本机路径引用扫描 + 真 clone 验证）、D4–D5、D7–D14。
+- 还欠：D1 的真 clone 验证、D4–D5、D7–D14。
 
 ### 8.3 踩过的坑 / 结论
 
-- **`.gitignore` 里裸的文件名/扩展名规则会静默吞掉源码。** 这次吞了两个「不提交就编不出来」的文件，
-  而且**没有任何一道门禁会报**——只有真在干净 clone 上跑一次 build 才暴露。
-  流程结论：**每次动 `.gitignore`，都要在干净 clone 上重跑一次 build。**
+- **`.gitignore` 里裸的文件名/扩展名规则会静默吞掉源码——这次出现了三次。**
+  `index.html`、vendor 的 11 个 `.css`、3 个示例 bundle。**没有任何一道门禁会报**：
+  `pnpm check` 绿、`test:baseline` 绿，只有**真在干净 clone 上跑 build、再跑一遍全套 spec**才暴露。
+  流程结论：**动过 `.gitignore` 之后，必须在干净 clone 上重跑 build 和 core lane。**
+- **「已知失败」这四个字有毒。** 交接文档写着那 4 个示例视图失败「在我这轮改动之前就已经在失败，与本项目无关，别去修」。
+  实测下来是同一类「从未提交的文件」。**下次看到「已知失败」，先单独跑一遍、问清它到底为什么红。**
 - **本机的 node 与 CI 的 node 不是一个。** pnpm 被全局配置钉在 `use-node-version=22.15.0`
-  （`pnpm exec node --version` 是 22.15.0，而 shell 里的 `node` 是 22.23.1）。
-  仓库脚本依赖 Node 的默认类型剥离（22.18+），所以在 CI 绿、在本机红。
-  排障第一步：确认跑的到底是哪个 node。
-- 文档视图那三个 boot channel 原来对**任何** sender 都应答；现在收窄到 `DocumentViewOwner` 自己创建过的 webContents。
+  （`pnpm exec node --version` → 22.15.0，而 shell 里的 `node` 是 22.23.1）。
+  仓库脚本依赖 Node 的默认类型剥离（22.18+），所以出现「CI 绿、本机红」。排障第一步：确认跑的是哪个 node。
+- **开发机上的 provider 凭据会污染夹具测试。** 夹具的 scrub 清单漏了 `ANTHROPIC_AUTH_TOKEN`，
+  一条环境变量就让 3 个 spec 红——而且失败信息里看不出任何和凭据有关的东西。
+
+### 8.4 下一步的方向（还没做）
+
+- S1 剩：应用身份（D4）、真·干净 clone 验证（D1/D2 后半）。
+- S2 起：把「改」和「存」接通（D7/D10），再批注 / 修订（D8/D9），再活文档 AI 桥（S5），最后真实模型链路（S6）。
 
 ---
 
