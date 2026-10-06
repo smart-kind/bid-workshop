@@ -1,7 +1,8 @@
 # Dependencies, generated output, and local verification artifacts.
 **/node_modules/
 # Vendored genoffice sources keep upstream's formatting; reformatting them here
-# would fork the copy for no reason. Refresh with scripts/sync-genoffice.mjs.
+# would fork the copy for no reason. The copy is ours now, so it is refreshed by
+# editing it in place, not by syncing from an upstream checkout.
 /vendor/
 # The document editor's renderer is the same kind of wholesale upstream copy,
 # kept under packages/ so it builds as a workspace package. Only its own
