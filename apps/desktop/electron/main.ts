@@ -34,6 +34,11 @@ import {
 } from "./extensions/extension-view-owner";
 import { performExtensionViewHostAction } from "./extensions/extension-view-actions";
 import { extensionFrameDocument } from "./extensions/extension-frame-document";
+import {
+  DocumentViewOwner,
+  documentSchemePrivileges,
+  installDocumentProtocol,
+} from "./documents/document-view";
 import { ReviewOwner } from "./workbench/review-owner";
 import { registerDesktopIpc } from "./ipc/register-desktop-ipc";
 import {
@@ -84,11 +89,14 @@ import type { SessionDriverEvent } from "@bid-workshop/session-driver";
 import type { GenerateThreadTitleOptions } from "@bid-workshop/pi-sdk-driver";
 import type { SessionRef, WorkspaceRef } from "@bid-workshop/session-driver";
 
+// `registerSchemesAsPrivileged` may only run once per process, so the document
+// editor's scheme is merged into the same call.
 protocol.registerSchemesAsPrivileged([
   {
     scheme: DESKTOP_EXTENSION_SCHEME,
     privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
   },
+  documentSchemePrivileges(),
 ]);
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
@@ -98,6 +106,7 @@ const devReloadMarkersEnabled = process.env.PI_APP_DEV_RELOAD_MARKERS === "1";
 const TURN_CAPTURE_BACKSTOP_MS = 10_000;
 let store: DesktopAppStore;
 let extensionViewOwner: DesktopExtensionViewOwner | undefined;
+let documentViewOwner: DocumentViewOwner | undefined;
 let windowOwner: WindowOwner;
 const themeManager = new ThemeManager();
 let mainWindow: BrowserWindow | null = null;
@@ -317,6 +326,13 @@ function appRendererUrl(): string {
   }
   const indexPath = path.join(__dirname, "..", "renderer", "index.html");
   return pathToFileURL(indexPath).toString();
+}
+
+/** Built document-editor renderer: shipped as an extra resource when packaged. */
+function documentEditorDistRoot(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "document-editor", "dist")
+    : path.resolve(__dirname, "../../../../packages/document-editor/dist");
 }
 
 function isInAppNavigationUrl(url: string): boolean {
@@ -668,6 +684,7 @@ function createAppWindow(sourceView?: DesktopAppViewState): BrowserWindow {
 
   window.once("closed", () => {
     windowOwner.remove(window);
+    documentViewOwner?.destroy(window);
     terminalFocusedWebContentsIds.delete(webContentsId);
     sidePanelFocusedWebContentsIds.delete(webContentsId);
     surfaceCloseShortcutIds.delete(webContentsId);
@@ -999,6 +1016,17 @@ app
     protocol.handle(DESKTOP_EXTENSION_SCHEME, (request) =>
       extensionViews.assetResponse(request.url),
     );
+    const documentView = new DocumentViewOwner({
+      distRoot: documentEditorDistRoot(),
+      preloadPath: path.join(__dirname, "..", "preload", "document-preload.js"),
+      // Background test windows are hidden; the hosted renderer must still run
+      // its parse/render work there, as the app window already does.
+      backgroundThrottling: windowTestMode !== "background",
+      onDiagnostic: (message) => console.error("[document-view]", message),
+    });
+    documentView.installIpc();
+    installDocumentProtocol(documentView);
+    documentViewOwner = documentView;
     const driverOptions: NonNullable<
       ConstructorParameters<typeof DesktopAppStore>[0]["driverOptions"]
     > = {
@@ -1142,6 +1170,7 @@ app
         state: store,
         workbench: store,
         extensionViews,
+        documentView,
         review: new ReviewOwner({
           checkpoints,
           userDataDir: app.getPath("userData"),

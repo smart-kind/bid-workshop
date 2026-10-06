@@ -10,6 +10,7 @@ import {
   breadcrumbSegments,
   fileNameFromPath,
   isMarkdownPath,
+  isWordDocumentPath,
   type FileLineMark,
   type FileWorkbenchTabs,
 } from "./file-workbench-state";
@@ -55,6 +56,7 @@ export function FileEditorPane({
 }: FileEditorPaneProps) {
   const activePath = tabs.active;
   const lineMark = tabs.line;
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   const [preview, setPreview] = useState<WorkspaceFilePreview | null>(null);
   const [viewerError, setViewerError] = useState<string | null>(null);
   const [viewerLoading, setViewerLoading] = useState(false);
@@ -103,6 +105,55 @@ export function FileEditorPane({
       cancelled = true;
     };
   }, [activePath, api, workspace.id]);
+
+  const wordDocument = activePath ? isWordDocumentPath(activePath) : false;
+  // A .docx is shown by a WebContentsView hosted in main and positioned over
+  // the body. The pane reports its own rectangle, so main never needs app
+  // layout, and re-reports whenever the pane moves.
+  useEffect(() => {
+    if (!activePath || !wordDocument) {
+      void api.hideDocumentView().catch((error: unknown) => {
+        console.error("[renderer] hideDocumentView failed", error);
+      });
+      return;
+    }
+    const element = bodyRef.current;
+    if (!element) {
+      return;
+    }
+    let frame = 0;
+    const report = () => {
+      const rect = element.getBoundingClientRect();
+      void api
+        .showDocumentView(workspace.id, activePath, {
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+        })
+        .catch((error: unknown) => {
+          console.error("[renderer] showDocumentView failed", error);
+        });
+    };
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(report);
+    };
+    report();
+    const observer = new ResizeObserver(schedule);
+    observer.observe(element);
+    window.addEventListener("resize", schedule);
+    window.addEventListener("scroll", schedule, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("scroll", schedule, true);
+      void api.hideDocumentView().catch((error: unknown) => {
+        console.error("[renderer] hideDocumentView failed", error);
+      });
+    };
+  }, [api, workspace.id, activePath, wordDocument]);
 
   const showSource = !markdown || sourceMode;
 
@@ -206,7 +257,7 @@ export function FileEditorPane({
           ))}
         </nav>
       ) : null}
-      <div className="file-editor__body">
+      <div className="file-editor__body" ref={bodyRef}>
         {renderEditorBody({
           activePath,
           lineMark: showSource ? lineMark : null,

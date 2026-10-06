@@ -217,6 +217,8 @@ export const desktopIpc = {
   listWorkspaceFiles: "pi-gui:list-workspace-files",
   readWorkspaceFile: "pi-gui:read-workspace-file",
   revealWorkspaceFile: "pi-gui:reveal-workspace-file",
+  showDocumentView: "pi-gui:show-document-view",
+  hideDocumentView: "pi-gui:hide-document-view",
   getChangedFiles: "pi-gui:get-changed-files",
   getFileDiff: "pi-gui:get-file-diff",
   stageFile: "pi-gui:stage-file",
@@ -411,6 +413,14 @@ export interface WorkspaceFilePreview {
   readonly truncated: boolean;
   readonly binary: boolean;
   readonly sizeBytes: number;
+}
+
+/** Rectangle of the file pane in CSS pixels from the window's top-left, for the document view. */
+export interface DocumentViewBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 export interface TerminalSize {
@@ -874,6 +884,14 @@ export interface PiDesktopApi {
   ): Promise<string[]>;
   readWorkspaceFile(workspaceId: string, filePath: string): Promise<WorkspaceFilePreview>;
   revealWorkspaceFile(workspaceId: string, filePath: string): Promise<void>;
+  /** Show the hosted document editor over the Files pane, loading `filePath`. */
+  showDocumentView(
+    workspaceId: string,
+    filePath: string,
+    bounds: DocumentViewBounds,
+  ): Promise<void>;
+  /** Hide/detach the document editor when the pane closes or another file is selected. */
+  hideDocumentView(): Promise<void>;
   getChangedFiles(workspaceId: string): Promise<ChangedFilesResult>;
   getFileDiff(workspaceId: string, filePath: string): Promise<string>;
   stageFile(workspaceId: string, filePath: string, stagingSourcePath?: string): Promise<void>;

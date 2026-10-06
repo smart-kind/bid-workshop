@@ -20,6 +20,7 @@ import {
   type NewMcpServerInput,
   type ChangedFilesResult,
   type DesktopNotificationPermissionStatus,
+  type DocumentViewBounds,
   type WorkspaceFilePreview,
   type PiDesktopCommand,
   type TerminalDataEvent,
@@ -579,6 +580,9 @@ contextBridge.exposeInMainWorld("piApp", {
     ) as Promise<WorkspaceFilePreview>,
   revealWorkspaceFile: (workspaceId: string, filePath: string) =>
     ipcRenderer.invoke(desktopIpc.revealWorkspaceFile, workspaceId, filePath) as Promise<void>,
+  showDocumentView: (workspaceId: string, filePath: string, bounds: DocumentViewBounds) =>
+    ipcRenderer.invoke(desktopIpc.showDocumentView, workspaceId, filePath, bounds) as Promise<void>,
+  hideDocumentView: () => ipcRenderer.invoke(desktopIpc.hideDocumentView) as Promise<void>,
   getChangedFiles: (workspaceId: string) =>
     ipcRenderer.invoke(desktopIpc.getChangedFiles, workspaceId) as Promise<ChangedFilesResult>,
   getFileDiff: (workspaceId: string, filePath: string) =>

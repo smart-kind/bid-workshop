@@ -29,6 +29,7 @@ import {
 import type {
   CustomProviderConfig,
   CustomProviderProbeInput,
+  DocumentViewBounds,
   McpServerScope,
   NewMcpServerInput,
   TerminalSize,
@@ -450,6 +451,30 @@ export function expectWorkspaceFileListOptions(
   }
   const record = expectRecord(value, "options");
   return { force: expectOptionalBoolean(record.force, "options.force") };
+}
+
+/** Pane rectangle for the document view; finite, non-negative CSS pixels. */
+export function expectDocumentViewBounds(value: unknown): DocumentViewBounds {
+  const record = expectRecord(value, "bounds");
+  return {
+    x: expectFiniteNumber(record.x, "bounds.x"),
+    y: expectFiniteNumber(record.y, "bounds.y"),
+    width: expectNonNegativeNumber(record.width, "bounds.width"),
+    height: expectNonNegativeNumber(record.height, "bounds.height"),
+  };
+}
+
+function expectFiniteNumber(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new TypeError(`${name} must be a finite number`);
+  }
+  return value;
+}
+
+function expectNonNegativeNumber(value: unknown, name: string): number {
+  const number = expectFiniteNumber(value, name);
+  if (number < 0) throw new TypeError(`${name} must not be negative`);
+  return number;
 }
 
 export function expectComposerAttachments(

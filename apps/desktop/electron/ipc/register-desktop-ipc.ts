@@ -24,6 +24,8 @@ import type { WindowOwner } from "../windows/window-owner";
 import type { PendingComposerDraftFlusher } from "../windows/pending-draft-flush";
 import { WorkbenchRequests, type WorkbenchOwner } from "./workbench-requests";
 import type { DesktopExtensionViewOwner } from "../extensions/extension-view-owner";
+import type { DocumentViewOwner } from "../documents/document-view";
+import { resolveExistingWorkspacePath } from "../platform/files/workspace-paths";
 import { registerExtensionViewRequests } from "./extension-view-requests";
 import { registerReviewRequests, type ReviewRequestsOwner } from "./review-requests";
 import { mainFrameHandler } from "./main-frame-ipc";
@@ -36,6 +38,7 @@ import {
   expectCreateWorktreeInput,
   expectCustomProviderConfig,
   expectCustomProviderProbeInput,
+  expectDocumentViewBounds,
   expectForkThreadInput,
   expectHostUiResponse,
   expectMcpServerScope,
@@ -172,6 +175,7 @@ export interface DesktopIpcOwners {
   readonly workbench: WorkbenchOwner;
   readonly review: ReviewRequestsOwner;
   readonly extensionViews: DesktopExtensionViewOwner;
+  readonly documentView: DocumentViewOwner;
   readonly workspace: WorkspaceOwner;
   readonly conversation: ConversationOwner;
   readonly orchestration: OrchestrationOwner;
@@ -950,6 +954,26 @@ export function registerDesktopIpc({
   );
 
   registerWorkspaceFileIpc(windows, owners.workspace, capabilities);
+  ipcMain.handle(
+    desktopIpc.showDocumentView,
+    async (event, rawWorkspaceId: unknown, rawFilePath: unknown, rawBounds: unknown) => {
+      const window = senderWindow(windows, event);
+      const workspaceId = expectNonEmptyString(rawWorkspaceId, "workspaceId");
+      const workspacePath = owners.workspace.getWorkspacePath(workspaceId);
+      if (!workspacePath) {
+        throw new Error(`Unknown workspace: ${workspaceId}`);
+      }
+      const filePath = expectString(rawFilePath, "filePath");
+      const absolutePath = await resolveExistingWorkspacePath(workspacePath, filePath);
+      owners.documentView.show(window, {
+        absolutePath,
+        rect: expectDocumentViewBounds(rawBounds),
+      });
+    },
+  );
+  ipcMain.handle(desktopIpc.hideDocumentView, (event) => {
+    owners.documentView.hide(senderWindow(windows, event));
+  });
   ipcMain.handle(desktopIpc.toggleWindowMaximize, (event) => {
     const window = senderWindow(windows, event);
     if (window.isMaximized()) {

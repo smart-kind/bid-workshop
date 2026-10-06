@@ -33,6 +33,7 @@ export default defineConfig(({ command }) => {
         rollupOptions: {
           input: {
             preload: path.resolve(projectRoot, "electron/preload.ts"),
+            "document-preload": path.resolve(projectRoot, "electron/document-preload.ts"),
           },
         },
       },

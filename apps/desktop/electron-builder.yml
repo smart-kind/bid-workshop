@@ -26,6 +26,11 @@ files:
 extraResources:
   - from: resources/icon.png
     to: icon.png
+  # The hosted document editor renderer is served from disk at run time.
+  - from: ../../packages/document-editor/dist
+    to: document-editor/dist
+    filter:
+      - "**/*"
 
 asar: true
 asarUnpack:

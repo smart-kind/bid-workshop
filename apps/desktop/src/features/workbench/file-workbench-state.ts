@@ -120,6 +120,11 @@ export function isMarkdownPath(path: string): boolean {
   return /\.(md|markdown|mdx)$/i.test(path);
 }
 
+/** Word documents open in the hosted document editor instead of the text preview. */
+export function isWordDocumentPath(path: string): boolean {
+  return /\.docx$/i.test(path);
+}
+
 export function breadcrumbSegments(path: string): readonly string[] {
   return path.split("/").filter(Boolean);
 }
