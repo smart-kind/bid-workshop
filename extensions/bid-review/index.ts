@@ -4,7 +4,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerDesktopView } from "@bid-workshop/extension-ui";
-import { BidReview, type BidDocument, type BidReviewState } from "./contract";
+import { BidReview, type BidDocument, type BidIssue, type BidReviewState } from "./contract";
 import {
   describeBid,
   loadBidDocument,
@@ -59,6 +59,41 @@ let sessionCwd: string | null = null;
  */
 function resolveDocumentPath(filePath: string): string {
   return isAbsolute(filePath) ? filePath : resolve(sessionCwd ?? process.cwd(), filePath);
+}
+
+/** Author shown on the comments written into the document. */
+const COMMENT_AUTHOR = "AI 审查助手";
+
+/** Findings that can be anchored in the document, and those that cannot. */
+function collectCommentAnchors(issues: BidIssue[]): {
+  anchors: BidCommentAnchor[];
+  unanchored: string[];
+} {
+  const anchors: BidCommentAnchor[] = [];
+  const unanchored: string[] = [];
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  for (const issue of issues) {
+    const blockIndex = issue.location?.blockIndex;
+    if (blockIndex === undefined) {
+      unanchored.push(issue.id);
+      continue;
+    }
+    const anchor: BidCommentAnchor = {
+      id: issue.id,
+      author: COMMENT_AUTHOR,
+      date: now,
+      text: commentBody(issue),
+      blockIndex,
+    };
+    if (issue.location?.quote !== undefined) anchor.quote = issue.location.quote;
+    anchors.push(anchor);
+  }
+  return { anchors, unanchored };
+}
+
+/** Where an annotated copy of a document goes when the caller does not say. */
+function defaultCommentOutput(sourcePath: string): string {
+  return `${sourcePath.replace(/\.docx$/i, "")}-批注.docx`;
 }
 
 /** Details reported by bid_start_review, shared by both branches. */
@@ -304,25 +339,7 @@ export default function bidReview(pi: ExtensionAPI) {
         };
       }
 
-      const anchored: BidCommentAnchor[] = [];
-      const unanchored: string[] = [];
-      const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-      for (const issue of snapshot.issues) {
-        const blockIndex = issue.location?.blockIndex;
-        if (blockIndex === undefined) {
-          unanchored.push(issue.id);
-          continue;
-        }
-        const anchor: BidCommentAnchor = {
-          id: issue.id,
-          author: "AI 审查助手",
-          date: now,
-          text: commentBody(issue),
-          blockIndex,
-        };
-        if (issue.location?.quote !== undefined) anchor.quote = issue.location.quote;
-        anchored.push(anchor);
-      }
+      const { anchors: anchored, unanchored } = collectCommentAnchors(snapshot.issues);
 
       if (anchored.length === 0) {
         const message =
@@ -335,7 +352,7 @@ export default function bidReview(pi: ExtensionAPI) {
         };
       }
 
-      const outputPath = input.outputPath ?? doc.path.replace(/\.docx$/i, "") + "-批注.docx";
+      const outputPath = input.outputPath ?? defaultCommentOutput(doc.path);
       try {
         const result = await writeBidComments({
           sourcePath: doc.path,
@@ -395,73 +412,114 @@ export default function bidReview(pi: ExtensionAPI) {
     },
   });
 
+  // Both views are hosted the same way and expose the same service, so they
+  // share one facet factory. The facet id differs because the host keys a
+  // backend facet per view.
+  const backendFacet = (id: string) =>
+    defineFacet({
+      id,
+      setup(env) {
+        const state = env.replicatedState(snapshot);
+        const listener = (next: BidReviewState) => state.replace(BACKGROUND_CONTEXT, next);
+        listeners.add(listener);
+        env.own(() => {
+          listeners.delete(listener);
+        });
+        env.provide(BidReview, {
+          state,
+          async loadDocument(input) {
+            const doc = await ingestDocument(input.filePath);
+            publish({
+              ...snapshot,
+              loadedFiles: [...snapshot.loadedFiles, doc],
+              lastError: null,
+            });
+            return { id: doc.id, name: doc.name, sections: doc.sections };
+          },
+          async startReview(input) {
+            const reviewId = crypto.randomUUID();
+            reviewingBids.clear();
+            const briefs: string[] = [];
+            for (const fileId of input.fileIds) {
+              const doc = snapshot.loadedFiles.find((file) => file.id === fileId);
+              const bid = loadedBids.get(fileId);
+              if (!doc || !bid) continue;
+              reviewingBids.set(fileId, { doc, bid });
+              briefs.push(buildReviewBrief(doc, bid, readCriteria(doc.path), TEXT_BUDGET));
+            }
+            if (briefs.length === 0) {
+              const message = "没有可审查的文档：请先加载标书";
+              publish({ ...snapshot, lastError: message });
+              throw new Error(message);
+            }
+            publish({
+              ...snapshot,
+              reviewStatus: "reviewing",
+              progress: 0,
+              issues: [],
+              summary: null,
+              lastError: null,
+            });
+            // The review itself is the model's job; hand it the brief as a turn.
+            await pi.sendUserMessage(briefs.join("\n\n---\n\n"));
+            return { reviewId };
+          },
+          async cancelReview() {
+            reviewingBids.clear();
+            publish({ ...snapshot, reviewStatus: "idle", progress: 0 });
+          },
+          async readDocument(input) {
+            const bid = loadedBids.get(input.fileId);
+            if (!bid) throw new Error("文档尚未加载或已失效");
+            return { blocks: bid.blocks };
+          },
+          async writeComments(input) {
+            const doc = input.fileId
+              ? snapshot.loadedFiles.find((file) => file.id === input.fileId)
+              : snapshot.loadedFiles[snapshot.loadedFiles.length - 1];
+            if (!doc) throw new Error("没有已加载的标书");
+
+            const { anchors, unanchored } = collectCommentAnchors(snapshot.issues);
+            if (anchors.length === 0) {
+              throw new Error(
+                snapshot.issues.length === 0 ? "还没有审查结论" : "结论里没有可定位的 blockIndex",
+              );
+            }
+            const result = await writeBidComments({
+              sourcePath: doc.path,
+              outputPath: defaultCommentOutput(doc.path),
+              comments: anchors,
+            });
+            return {
+              outputPath: result.outputPath,
+              written: result.written,
+              skipped: [...result.skipped, ...unanchored],
+            };
+          },
+          async exportReport(input) {
+            return {
+              title: "Bid Review Report",
+              content: snapshot.summary || "",
+              outputPath: "/tmp/report",
+            };
+          },
+        });
+      },
+    });
+
   registerDesktopView(pi, {
     id: "bid-review",
     title: "Bid Review",
     source: import.meta.url,
     frontend: new URL("./dist/desktop.js", import.meta.url),
-    backend: () =>
-      defineFacet({
-        id: "bid-workshop.bid-review.backend",
-        setup(env) {
-          const state = env.replicatedState(snapshot);
-          const listener = (next: BidReviewState) => state.replace(BACKGROUND_CONTEXT, next);
-          listeners.add(listener);
-          env.own(() => {
-            listeners.delete(listener);
-          });
-          env.provide(BidReview, {
-            state,
-            async loadDocument(input) {
-              const doc = await ingestDocument(input.filePath);
-              publish({
-                ...snapshot,
-                loadedFiles: [...snapshot.loadedFiles, doc],
-                lastError: null,
-              });
-              return { id: doc.id, name: doc.name, sections: doc.sections };
-            },
-            async startReview(input) {
-              const reviewId = crypto.randomUUID();
-              reviewingBids.clear();
-              const briefs: string[] = [];
-              for (const fileId of input.fileIds) {
-                const doc = snapshot.loadedFiles.find((file) => file.id === fileId);
-                const bid = loadedBids.get(fileId);
-                if (!doc || !bid) continue;
-                reviewingBids.set(fileId, { doc, bid });
-                briefs.push(buildReviewBrief(doc, bid, readCriteria(doc.path), TEXT_BUDGET));
-              }
-              if (briefs.length === 0) {
-                const message = "没有可审查的文档：请先加载标书";
-                publish({ ...snapshot, lastError: message });
-                throw new Error(message);
-              }
-              publish({
-                ...snapshot,
-                reviewStatus: "reviewing",
-                progress: 0,
-                issues: [],
-                summary: null,
-                lastError: null,
-              });
-              // The review itself is the model's job; hand it the brief as a turn.
-              await pi.sendUserMessage(briefs.join("\n\n---\n\n"));
-              return { reviewId };
-            },
-            async cancelReview() {
-              reviewingBids.clear();
-              publish({ ...snapshot, reviewStatus: "idle", progress: 0 });
-            },
-            async exportReport(input) {
-              return {
-                title: "Bid Review Report",
-                content: snapshot.summary || "",
-                outputPath: "/tmp/report",
-              };
-            },
-          });
-        },
-      }),
+    backend: () => backendFacet("bid-workshop.bid-review.backend"),
+  });
+
+  registerDesktopView(pi, {
+    id: "bid-document",
+    title: "Bid Document",
+    source: import.meta.url,
+    frontend: new URL("./dist/document-desktop.js", import.meta.url),
+    backend: () => backendFacet("bid-workshop.bid-document.backend"),
   });
 }

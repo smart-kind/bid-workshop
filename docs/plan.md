@@ -484,19 +484,45 @@ lockfile 里没有 vendor 包的 importer，`pnpm install` 也不会写进去（
 锚点精确落在预期的块（41 / 55 / 66 / 69）、且 `blocks=74 headings=17 tables=3 chars=2201`
 与原文**完全一致**（正文逐字相同、表格逐字相同）——即没有破坏任何原有排版。
 
-### 第 5 步：UI 集成 — 进行中（面板已打通）
+### 第 5 步：UI 集成 — 部分完成
 
 - 左侧：AI 对话（pi-gui 已有）✅
-- 右侧：Word 文档预览和编辑（genoffice 部件）❌ 未做
-- 用户看到 AI 审查过程 + 文档上实时出现的批注 ❌ 未做
+- 右侧：**文档面**（扩展视图，与审查面板并列）✅ 已完成；**真正的 genoffice 编辑器（可编辑）** ❌ 未做，原因见下
+- 用户看到 AI 审查过程 + 文档上实时出现的批注 ✅ 已完成（文档视图把每条结论标在对应段落旁，随审查实时出现）
 
-**已完成的前置（原本是坏的三处，见「面板为何此前从未渲染」）**：
+**已做**：
 
-- 面板能在真实 Electron 里渲染并加载真实 .docx，core lane 有回归测试守住：
-  `pnpm --filter @bid-workshop/desktop run test:core:bid-review`
-- 面板展示解析结果（块数 / 表数 / 章节大纲），不再只显示文件名
+- 第二个扩展视图 `bid-document`（`document-desktop.ts`）：渲染解析出的正文（逐块，带块序号），
+  并把每条结论以其锚定的 `blockIndex` 显示为段旁批注卡（严重度 + 描述 + 建议），随 state 变化实时更新
+- `bid-review` 与 `bid-document` 共用同一个 backend facet 工厂与同一个 `BidReview` 服务，两组状态天然一致
+- 服务新增 `readDocument`（把正文块交给视图）与 `writeComments`（从 UI 完成写批注闭环）
+- core lane 回归：`pnpm --filter @bid-workshop/desktop run test:core:bid-review`
 
-**仍未做**：右侧文档区（把 genoffice 编辑器作为部件接上），以及批注在编辑器里实时可见。
+**为什么「把 genoffice 编辑器作为部件接上」没有做**（结论有据，不是省事）：
+
+1. **它不是一个组件，是一整个 Electron 应用**。上游 `apps/docs` 有自己 5000 行的主进程、
+   自己的 preload（约 60 个方法的 `window.desktop` IPC 族）、6649 行的 `App.tsx`，
+   `package.json` 里**没有 `exports`**，没有任何可复用的库入口。
+2. **扩展 iframe 装不下它**。本应用的扩展视图跑在 `sandbox allow-scripts` 的 iframe 里，
+   每连接 CSP 为 `connect-src 'none'`、`frame-src 'none'`、`worker-src 'none'`；
+   而 docs 渲染层需要 preload 与自己的 IPC。上游是靠 **`WebContentsView`** 嵌入的，不是 iframe。
+3. **Electron 大版本差**。bid-workshop 是 Electron **37**，docs/workspace-shell 是 **43**。
+4. **接入代价**：按上游 workspace-shell 的做法，要在 bid-workshop 主进程里**相对路径引入 docs 主进程源码**
+   并打进自己的 main bundle，注册它整套 IPC（与现有 `window.piApp` 形成两套并行 IPC 族），
+   处理它模块级的全局单例（`setActiveDocsResolver`、`mainWindow`）与关闭怪癖
+   （直接关 docs 的 webContents 会把 Electron UI 线程卡进原生模态循环，必须走 `teardownDocsRenderer`），
+   还要再 vendor 一批包（`ui`/`electron-utils`/`project-store`/`file-store`/Tiptap/React 19/pdfjs…）。
+
+   **这是一个跨大版本的应用移植，不是一次 UI 装配。** 半途插入会比不做更糟——它会把应用主进程拖进一个
+   不确定状态。正确的下一步是**单独评估**：要么把 bid-workshop 升到 Electron 43 并移植 workspace-shell 的
+   editor-host 层，要么上游先把 docs 编辑器抽成可复用包。
+
+**另外两点事实**（写下来免得下次再踩）：
+
+- 扩展视图的宿主只提供**一个带标签页的侧栏**，没有「右侧独立面板」这种面。想让文档与审查**并排**，
+  需要改 workbench 的契约与 App 组合（`ToolRef` 是个封闭联合：`files|changes|terminal|extension`）。
+  当前文档视图是与审查面板并列的另一个标签页，不是并排的第二栏。
+- `docs/workspace-redesign-plan.md` 把「更多面」明确列为 P2「单独的产品/设计评审」，即当前设计不覆盖。
 
 依赖关系：第 0 步先行且独立；第 1 步独立；第 2→3→4 步串行；第 5 步在 2-4 通了之后做。
 
@@ -635,3 +661,14 @@ lockfile 里没有 vendor 包的 importer，`pnpm install` 也不会写进去（
 22. **Electron 验证失败并挖出三处既有缺陷**——面板**此前从未渲染成功过**。已全部修复，详见「面板为何此前从未渲染」。
 23. **core lane 回归测试**：`apps/desktop/tests/core/bid-review.spec.ts` 在真实 Electron 上加载真实 .docx，
     断言 `74 个块` / `3 张表` 与五个真实章节标题。**已通过**（`1 passed`）。
+
+**2026-10-06（第七轮：第 5 步）**：
+
+24. **新增文档面**（第二个扩展视图 `bid-document`，`document-desktop.ts`）：渲染解析出的正文逐块内容，
+    并把每条结论按 `blockIndex` 显示为段旁批注卡，随 state 实时出现。
+    与 `bid-review` 共用 `backendFacet()` 工厂与同一个 `BidReview` 服务。
+25. **服务补齐闭环**：`readDocument`（正文交给视图）、`writeComments`（UI 直接写批注）；
+    审查面板加「写入批注」按钮并显示结果。
+26. **Electron 测试扩展到两个视图**：一条测试串起「面板解析 → 文档视图渲染正文」。**已通过**（`1 passed`）。
+27. **明确未做并给出依据**：「把 genoffice 编辑器作为部件接上」= 跨 Electron 大版本（37 vs 43）的
+    应用移植，且扩展 iframe 的 CSP 装不下它（`connect-src 'none'` 等）。详见第 5 步一节。

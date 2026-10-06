@@ -44,6 +44,20 @@ export interface ReportDraft {
   outputPath: string;
 }
 
+/** One paragraph of a loaded document, as the document view renders it. */
+export interface BidBodyBlock {
+  index: number;
+  type: string;
+  level: number;
+  text: string;
+}
+
+export interface BidWrittenComments {
+  outputPath: string;
+  written: number;
+  skipped: string[];
+}
+
 export interface BidReviewService {
   state: ReplicatedState<BidReviewState>;
   loadDocument(
@@ -52,6 +66,10 @@ export interface BidReviewService {
   ): Promise<{ id: string; name: string; sections: string[] }>;
   startReview(input: { fileIds: string[] }, context: Context): Promise<{ reviewId: string }>;
   cancelReview(input: Record<string, never>, context: Context): Promise<void>;
+  /** The loaded document's paragraphs, so a view can show the document itself. */
+  readDocument(input: { fileId: string }, context: Context): Promise<{ blocks: BidBodyBlock[] }>;
+  /** Write the recorded findings into a copy of the document as Word comments. */
+  writeComments(input: { fileId?: string }, context: Context): Promise<BidWrittenComments>;
   exportReport(input: { format: "markdown" | "pdf" }, context: Context): Promise<ReportDraft>;
 }
 

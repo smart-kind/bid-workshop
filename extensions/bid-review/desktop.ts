@@ -63,6 +63,8 @@ export async function mount(
   let hydrated = false;
   let severityFilter: string | null = null;
   let categoryFilter: string | null = null;
+  /** Outcome of the last write-comments run, shown under the actions. */
+  let commentResult: string | null = null;
 
   const SAMPLE_FILES = [
     { name: "投标文件-某软件科技.docx", label: "投标文件 — 某软件科技有限公司" },
@@ -190,6 +192,29 @@ export async function mount(
     });
     actions.appendChild(reviewBtn);
 
+    if (state.issues.length > 0) {
+      const commentBtn = doc.createElement("button");
+      commentBtn.textContent = "写入批注";
+      commentBtn.addEventListener("click", () => {
+        const target = state.loadedFiles[state.loadedFiles.length - 1];
+        if (!target) return;
+        commentBtn.disabled = true;
+        service.writeComments({ fileId: target.id }, BACKGROUND_CONTEXT).then(
+          (result) => {
+            commentResult = `已写入 ${result.written} 条批注：${result.outputPath}${
+              result.skipped.length > 0 ? `（${result.skipped.length} 条因缺定位未写入）` : ""
+            }`;
+            render();
+          },
+          (error: Error) => {
+            commentResult = `写入批注失败：${error.message}`;
+            render();
+          },
+        );
+      });
+      actions.appendChild(commentBtn);
+    }
+
     if (state.reviewStatus === "reviewing") {
       const cancelBtn = doc.createElement("button");
       cancelBtn.textContent = "取消";
@@ -206,6 +231,14 @@ export async function mount(
     actions.appendChild(exportBtn);
 
     view.appendChild(actions);
+
+    if (commentResult) {
+      const note = doc.createElement("p");
+      note.className = "bid-notice";
+      note.dataset.commentResult = "1";
+      note.textContent = commentResult;
+      view.appendChild(note);
+    }
 
     // Progress
     if (state.reviewStatus === "reviewing") {

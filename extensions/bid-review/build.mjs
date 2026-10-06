@@ -25,7 +25,7 @@ await build({
 });
 
 await build({
-  entryPoints: ["desktop.ts"],
+  entryPoints: ["desktop.ts", "document-desktop.ts"],
   bundle: true,
   format: "esm",
   outdir: "dist",

@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import type { BidBodyBlock } from "./contract";
 
 /**
  * The document shape the review works on, described structurally rather than
@@ -51,6 +52,9 @@ export interface LoadedBid {
   charCount: number;
   outline: BidOutlineEntry[];
   tables: BidTableInfo[];
+  /** One entry per visible block, so a view can render the document and anchor
+   *  a finding to the paragraph it belongs to. */
+  blocks: BidBodyBlock[];
   /** Whole document as text, in reading order. */
   text: string;
 }
@@ -161,7 +165,14 @@ function summarize(parsed: BidParsedDocument, filePath: string, size: number): L
 
   const outline: BidOutlineEntry[] = [];
   const tables: BidTableInfo[] = [];
+  const blocks: BidBodyBlock[] = [];
   visible.forEach((block, blockIndex) => {
+    blocks.push({
+      index: blockIndex,
+      type: block.type,
+      level: block.level ?? 0,
+      text: renderBlock(block),
+    });
     if (block.type === "heading") {
       outline.push({ level: block.level ?? 1, title: blockText(block), blockIndex });
     } else if (block.type === "table") {
@@ -189,6 +200,7 @@ function summarize(parsed: BidParsedDocument, filePath: string, size: number): L
     charCount: text.length,
     outline,
     tables,
+    blocks,
     text,
   };
 }

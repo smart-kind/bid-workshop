@@ -27,31 +27,33 @@ const SAMPLE_BUTTON_LABEL = "投标文件 — 某软件科技有限公司";
  */
 const EXPECTED_BLOCK_COUNT = 74;
 const EXPECTED_TABLE_COUNT = 3;
-const REAL_HEADING = "第三章  技术方案";
 /** Titles that must appear for the outline to come from the document, not a fixture. */
 const REAL_HEADINGS = [
   "第一章  投标人基本情况",
   "第二章  资质与业绩",
-  REAL_HEADING,
+  "第三章  技术方案",
   "第四章  商务报价",
   "第五章  服务承诺",
 ];
+/** A paragraph that exists only in the document body, shown by the document view. */
+const REAL_PARAGRAPH = "投标人（盖章）：";
 
-async function openBidReviewView(window: Page): Promise<FrameLocator> {
+/** Open an extension view by its registered title, as a tab in the workbench. */
+async function openExtensionView(window: Page, title: string): Promise<FrameLocator> {
   const workbench = window.getByTestId("workbench");
   if (!(await workbench.isVisible())) await window.getByTestId("toggle-side-panel").click();
-  const tab = workbench.getByRole("tab", { name: "Bid Review", exact: true });
+  const tab = workbench.getByRole("tab", { name: title, exact: true });
   if (await tab.count()) await tab.click();
   else {
     const chooser = window.getByTestId("workbench-chooser");
     if (!(await chooser.isVisible())) await window.getByTestId("workbench-add-tab").click();
-    await chooser.getByRole("button", { name: "Bid Review", exact: true }).click();
+    await chooser.getByRole("button", { name: title, exact: true }).click();
   }
   await expectExtensionViewReady(window);
   return window.frameLocator('[data-testid="extension-view-frame"]');
 }
 
-test("the bid-review panel parses the real sample .docx into its outline and tables", async () => {
+test("the bid-review panel parses the real sample .docx and the document view shows it", async () => {
   test.setTimeout(120_000);
   const userDataDir = await makeUserDataDir();
   const workspacePath = await makeWorkspace("bid-review-workspace");
@@ -78,24 +80,40 @@ test("the bid-review panel parses the real sample .docx into its outline and tab
   try {
     const window = await harness.firstWindow();
     await createNamedThread(window, "Bid review session");
-    const frame = await openBidReviewView(window);
 
-    const sampleButton = frame.getByRole("button", { name: SAMPLE_BUTTON_LABEL, exact: true });
+    // --- the review panel loads and summarises the document ---
+    const review = await openExtensionView(window, "Bid Review");
+    const sampleButton = review.getByRole("button", { name: SAMPLE_BUTTON_LABEL, exact: true });
     await expect(sampleButton).toBeVisible();
     await sampleButton.click();
 
     // Loading is a round trip to the extension backend, so wait on the panel
     // reaching the loaded state rather than reading it straight after the click.
-    // The wording matches the extension's own summary; the counts and headings
-    // only exist in the real .docx, so mock data cannot satisfy them.
-    const body = frame.locator("body");
-    await expect(body).toContainText(`已加载 1 份文件：${SAMPLE_FILE}`, { timeout: 30_000 });
-    await expect(body).toContainText(`${EXPECTED_BLOCK_COUNT} 个块`);
-    await expect(body).toContainText(`${EXPECTED_TABLE_COUNT} 张表`);
+    // The counts and headings only exist in the real .docx, so mock data cannot
+    // satisfy them.
+    await expect(review.locator("body")).toContainText(`已加载 1 份文件：${SAMPLE_FILE}`, {
+      timeout: 30_000,
+    });
+    await expect(review.locator("body")).toContainText(`${EXPECTED_BLOCK_COUNT} 个块`);
+    await expect(review.locator("body")).toContainText(`${EXPECTED_TABLE_COUNT} 张表`);
     for (const heading of REAL_HEADINGS) {
-      await expect(body).toContainText(heading);
+      await expect(review.locator("body")).toContainText(heading);
     }
+
+    // --- the document view renders the body itself ---
+    const documentView = await openExtensionView(window, "Bid Document");
+    const body = documentView.locator("body");
+    await expect(body).toContainText(`${fileSummary()}`, { timeout: 30_000 });
+    await expect(body.locator("[data-document]")).toBeVisible();
+    // Paragraphs come from the parsed document, not from the summary state.
+    await expect(body).toContainText(REAL_PARAGRAPH);
+    await expect(body).toContainText("承诺工期");
+    await expect(body.locator("[data-block]").first()).toBeVisible();
   } finally {
     await harness.close();
   }
 });
+
+function fileSummary(): string {
+  return `${SAMPLE_FILE}：${EXPECTED_BLOCK_COUNT} 个块，${EXPECTED_TABLE_COUNT} 张表`;
+}
