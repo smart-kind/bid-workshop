@@ -257,8 +257,16 @@
 1. 清掉机外引用：`workspaces/*/.pi/settings.json` 里指向 `/Users/david/_projects/...` 的扩展路径（业务，范围外 → 去掉）；
    删 `scripts/sync-genoffice.mjs`（同步外部项目的脚本，已无用）。
 2. 全仓扫 `/Users/`、`/home/`、软链接（`find -type l`），逐个处理。
-3. 应用身份：`apps/desktop/electron-builder.yml`（appId / productName / publish）+ `package.json` 元数据；
-   连带修 `verify:launcher-contract`、`verify:release-version`、CI workflow 里断言上游身份/引用不存在 script 的地方。
+3. 应用身份（F11）：`electron-builder.yml` 全量换成本项目身份（appId / productName / copyright / 产物名 /
+   linux + deb + win 元数据 / publish）；`update-checker` 不再去查上游仓库；mac 的通知 helper 二进制改名；
+   打得到的脚本与测试跟着改。本地打包拿不到 Apple 证书，所以 `notarize` 与 `dmg.sign` 关掉（有证书再开）。
+   **还没改的**（都只在发版流程里跑、本地跑不到）：
+   `apps/desktop/scripts/{verify-release-config.mjs, verify-linux-release.sh, verify-windows-release.ps1,
+finalize-macos-release.sh}`、`scripts/{homebrew-tap-utils, release-homebrew-sync, update-homebrew-tap,
+verify-homebrew-flow, verify-install-copy}.mjs`、`.github/workflows/release.yml`。
+   其中 Homebrew 那一套是**我们根本不发布**的基础设施，按 §11 应当直接删——留作下一步。
+   另外 CI 里 `pnpm verify:release-config` 引用了一个**根 `package.json` 里根本不存在的 script**，
+   这一步要么补实现、要么删掉，不能留着。
 4. 上游示例扩展：按 F7 清掉失败项，core lane 转绿。
 5. **Spike**：主进程消费 `@genoffice/docx-engine` 的可行路径（F3）——写一个最小验证（脚本或单测），
    证明「主进程能 `parseDocx` 一个真实 .docx 并 `saveDocx` 回去」。走通哪条路，就把结论写进 §四 F3。
