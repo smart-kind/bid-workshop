@@ -1,5 +1,8 @@
 # Dependencies, generated output, and local verification artifacts.
 **/node_modules/
+# Vendored genoffice sources keep upstream's formatting; reformatting them here
+# would fork the copy for no reason. Refresh with scripts/sync-genoffice.mjs.
+/vendor/
 # Anchor outputs to roots so similarly named source folders stay checked.
 /dist/
 /dist-electron/

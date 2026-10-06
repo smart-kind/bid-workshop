@@ -44,11 +44,14 @@ genoffice 的价值在于它的 docx-engine：能解析 .docx、能渲染、能�
 | 字体度量                                    | genoffice `font-metrics`          | `vendor/genoffice/font-metrics` (symlink)      | ✅ 已引入                         |
 | 国际化                                      | genoffice `i18n`                  | `vendor/genoffice/i18n` (symlink)              | ✅ 已引入                         |
 | 幻灯片引擎                                  | genoffice `pptx-engine`           | `vendor/genoffice/pptx-engine` (symlink)       | ✅ 已引入（上一版本文档漏记）     |
-| **工作空间模型 + 文档/批注工具 + 审查工具** | **genoffice `workspace-harness`** | **未引入**                                     | **❌ 见下节**                     |
+| **工作空间模型 + 文档/批注工具 + 审查工具** | **genoffice `workspace-harness`** | `vendor/genoffice/workspace-harness`（已入库） | ✅ 已引入（子路径取用）           |
 | 无头文档 CLI（调试用）                      | genoffice `cli`                   | 未引入（上游 `packages/cli`，bin `genoffice`） | ❌ 未引入                         |
-| 标书审查业务逻辑                            | 本项目                            | `extensions/bid-review/`                       | ⚠️ 仅有 mock                      |
+| 标书审查业务逻辑                            | 本项目                            | `extensions/bid-review/`                       | ✅ 已实现（第 2–4 步）            |
 
-vendor 下的包都是 symlink，指向上游 `/Users/david/orca/workspaces/gen-document/feat-workspace/packages/` 下的对应目录。链接已核实全部有效。
+`vendor/genoffice/` 下的包**源码已直接入库并纳入版本控制**（不再是软链），所以
+`git clone && pnpm install && pnpm build` 在任何人、任何机器上都跑得通，不需要上游 checkout。
+更新方式：`node scripts/sync-genoffice.mjs <上游 feat-workspace 路径>`——它是朴素的文件复制，
+结果会出现在 `git status` 里，可以像普通改动一样评审。许可证（`LICENSE` / `NOTICE` / `LICENSE-UNICODE.txt`）随代码一起入库。
 
 ---
 
@@ -304,9 +307,9 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 | ------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | pi-gui 壳 fork 到 bid-workshop        | ✅ 已完成                                                                                           |
 | 品牌改名 + 移除无关模块               | ✅ 已完成                                                                                           |
-| genoffice 包引入（symlink）           | ✅ 已完成，链接全部有效（10 个包）                                                                  |
+| **项目自足性（clone 即可编译）**      | ✅ **已解决**：genoffice 源码已入库并纳入版本控制，不再依赖本机软链，见下节                         |
 | GitHub 仓库 (smart-kind/bid-workshop) | ✅ 已创建并推送，分支 `main`，**公开仓库**                                                          |
-| bid-review 扩展                       | ⚠️ 已有完整 mock 实现（已提交 `36d94cf`）                                                           |
+| bid-review 扩展                       | ✅ 已实现（mock 已被真实链路替换）                                                                  |
 | workspace-harness 复用通道            | ✅ 已打通（子路径 exports，实测可 import）                                                          |
 | **样例标书 .docx**                    | ✅ 已完成（`workspaces/bid-sample/投标文件-某软件科技.docx`，含 6 个埋点）                          |
 | 评审条件                              | ✅ 已完成（`workspaces/bid-sample/评审条件.md`）                                                    |
@@ -332,7 +335,34 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 
 ---
 
-## CI 现状（重要）
+## 第 1 条：项目自足性（已完成）
+
+**目标**：`git clone && pnpm install && pnpm build` 在任何人、任何机器上都跑得通，不依赖某个开发者本机的路径。
+
+**原先的问题**（审计 `docs/audit-issues.md` 问题 1 也指出同一件事）：`vendor/genoffice/*` 是指向
+`/Users/david/orca/...` 的软链，而 `vendor/` 被 gitignore。换台机器 clone 下来，扩展连 `@genoffice/*`
+都解析不到，项目直接编译不过。
+
+**做法**：把 genoffice 的**源码直接入库并纳入版本控制**（不是子模块——上游 `feat-workspace` 上有 41 项未提交，
+子模块会拿到一个编译不过的旧快照）。具体：
+
+| 内容                                         | 说明                                                                                                                                   |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `vendor/genoffice/<10 个包>/`                | docx-engine / file-parse / font-metrics / html2docx / i18n / pptx-engine / agent-core / ai-provider / workspace-harness / xlsx-gateway |
+| `vendor/tools/ooxml-validate/`               | pptx-engine 测试按 `../../../tools/` 找它，要保持 `packages/` 与 `tools/` 的兄弟关系                                                   |
+| `vendor/tsconfig.base.json`                  | vendored 包的 `tsconfig.json` 写 `"extends": "../../tsconfig.base.json"`；缺了它 tsc 退回 target ES5 并报一堆错                        |
+| `LICENSE` / `NOTICE` / `LICENSE-UNICODE.txt` | Apache-2.0 的义务，随代码一起入库                                                                                                      |
+| `scripts/sync-genoffice.mjs`                 | 替代原 `link-genoffice.mjs`：从上游 checkout 复制更新，结果是可评审的文件改动                                                          |
+
+**实测**（`pnpm install --frozen-lockfile`，即全新 clone 与 CI 走的路径）：通过。
+17 个 workspace 项目、lockfile 含 10 个 vendor importer。
+
+**同时修掉的两个坑**：
+
+1. `.npmrc` 增加 `link-workspace-packages=true`。vendored 包内部把同族依赖写成 `"*"`，
+   pnpm 10 默认不链接本地 workspace 包，会去 npm registry 找 `@genoffice/agent-core` 而失败。
+   软链时代这个问题被掩盖，变成真目录后才暴露。
+2. `.gitignore` 的 `*.js` 规则会吃掉 vendored 包里自带的 JS 文件，已加 `!vendor/**/*.js` 例外。
 
 **CI 从首次提交起从未通过。** 已核实 `gh run list`：`feat: initial bid-workshop project`（run 37297329248）即 `failure`，
 之后每次 push 都失败。不是一个 bug，而是推送时就没到绿灯状态：
@@ -344,23 +374,27 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 | `typecheck`          | ✅ 已可过（无 vendor） | 见下                                                                                                                             |
 | `check:architecture` | ✅ 通过                |                                                                                                                                  |
 
-### vendor 与 CI 的不兼容（已用「解耦」绕开）
+### vendor 与 CI：**已从根上解决**（原先靠「解耦」绕开）
 
-`vendor/genoffice/*` 是 gitignore 的、指向仓库外的 symlink，CI 上不存在。
-只要**任何被 CI typecheck 的文件 import `@genoffice/*`**，CI 的 typecheck 就会失败。
-而且 `apps/desktop` 也在 CI 的 typecheck 覆盖内，所以「把 import 挪到应用层」并不能解决。
+原先 `vendor/genoffice/*` 是 gitignore 的、指向仓库外的 symlink，CI 上不存在，于是：
 
-另一个实测事实：**vendor 存在时 `pnpm install --frozen-lockfile` 会失败**——
-lockfile 里没有 vendor 包的 importer，`pnpm install` 也不会写进去（那些包的 symlink 指向仓库外）。
-也就是说这种 vendoring 方式从一开始就与 CI 的 frozen install 不兼容；
-此前没有任何代码依赖 vendor，所以这个问题一直被掩盖。
+- 只要**任何被 CI typecheck 的文件 import `@genoffice/*`**，typecheck 就失败（`apps/desktop` 也在覆盖内，挪到应用层也没用）
+- **vendor 存在时 `pnpm install --frozen-lockfile` 会失败**：lockfile 里没有 vendor 包的 importer，
+  而这恰恰是全新 clone 与 CI 走的安装路径。这种 vendoring 方式从一开始就与 frozen install 不兼容，
+  此前没有任何代码依赖 vendor，所以问题一直被掩盖。
 
-**采用的解法**：
+**现在 vendor 源码已入库并纳入版本控制**，随之：
 
-- `document.ts` 只定义**自己的结构化类型**（`BidBlock` / `BidParsedDocument` / `LoadedBid`）与解析器**端口** `BidDocumentParser`，**不 import 引擎**
-- `parser-docx.mjs` 是唯一 import `@genoffice/docx-engine` 的文件。写成 `.mjs` 而非 `.ts`：CI 解析不到该模块，
-  TS 文件过不了 typecheck；配套 `parser-docx.d.mts` 给调用方类型
-- `index.ts` 在模块加载时 `setBidDocumentParser(docxParser)` 注入
+- `pnpm install --frozen-lockfile` 通过（17 个 workspace 项目，lockfile 含 10 个 vendor importer）
+- `@genoffice/*` 在任何机器上都解析得到，typecheck 不再有「模块找不到」的问题
+- `.npmrc` 增加 `link-workspace-packages=true`：vendored 包内部的 `"*"` 依赖必须链接本地副本，
+  否则 pnpm 会去 npm registry 找 `@genoffice/agent-core` 之类的包而失败（软链时代这个坑被掩盖了）
+- `vendor/tsconfig.base.json` 必须随代码一起入库：vendored 包的 `tsconfig.json` 写的是
+  `"extends": "../../tsconfig.base.json"`（原上游仓库根的文件），缺了它 tsc 会退回 target ES5 并报一堆错
+
+**仍然保留的解耦**（现在是设计选择，不再是 CI 权宜）：`document.ts` 定义自己的结构化类型与
+`BidDocumentParser` 端口，`parser-docx.mjs` 是唯一 import 引擎的文件，`index.ts` 在加载时注入。
+这一步已不再是为了绕开 CI，而是把引擎依赖收在一个接缝里。
 
 **代价（须知）**：适配器是普通 JS，不被 tsc 检查；`scripts/build-sample-bid.ts` 也从 tsconfig 的 `include` 中排除了
 （它同样 import 引擎）。这两个文件的正确性靠运行期验证，不靠类型检查。
@@ -672,3 +706,15 @@ lockfile 里没有 vendor 包的 importer，`pnpm install` 也不会写进去（
 26. **Electron 测试扩展到两个视图**：一条测试串起「面板解析 → 文档视图渲染正文」。**已通过**（`1 passed`）。
 27. **明确未做并给出依据**：「把 genoffice 编辑器作为部件接上」= 跨 Electron 大版本（37 vs 43）的
     应用移植，且扩展 iframe 的 CSP 装不下它（`connect-src 'none'` 等）。详见第 5 步一节。
+
+**2026-10-06（第八轮：第 1 条 项目自足性）**：
+
+28. **genoffice 源码入库**（10 个包 + `tools/ooxml-validate` + `tsconfig.base.json` + 许可证），
+    `vendor/` 不再被 gitignore。上游是链接工作树且有 41 项未提交，**子模块会拿到编译不过的旧快照**，故选择直接 vendor。
+29. **`pnpm install --frozen-lockfile` 通过**（17 个 workspace、lockfile 含 10 个 vendor importer）——
+    此前 vendor 存在时必然失败，是全新 clone 与 CI 的安装路径。
+30. **`pnpm typecheck` 全绿**（16 个 workspace，含全部 vendored 包与 apps/desktop）。
+31. 同时修掉：`.npmrc` 加 `link-workspace-packages=true`（vendored 包内部 `"*"` 依赖需链接本地副本）、
+    `.gitignore` 加 `!vendor/**/*.js`（`*.js` 规则会吃掉 vendored 的 JS）、
+    `.prettierignore` 加 `/vendor/`（588 个上游格式文件不该被本仓库重排）。
+32. `scripts/link-genoffice.mjs` → `scripts/sync-genoffice.mjs`（从上游复制更新，结果是可评审的文件改动）。

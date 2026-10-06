@@ -36,6 +36,7 @@ index.html
 # Extension build output
 extensions/*/dist/
 
-# Vendored genoffice packages (symlinks to local genoffice workspace)
-# Run `node scripts/link-genoffice.mjs` to create these.
-vendor/
+# Vendored genoffice sources are checked in, so a clone builds with no upstream
+# checkout. Placed after the `*.js` rule so the few plain-JS files they ship
+# survive; node_modules and build output stay ignored.
+!vendor/**/*.js
