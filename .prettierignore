@@ -3,6 +3,10 @@
 # Vendored genoffice sources keep upstream's formatting; reformatting them here
 # would fork the copy for no reason. Refresh with scripts/sync-genoffice.mjs.
 /vendor/
+# The document editor's renderer is the same kind of wholesale upstream copy,
+# kept under packages/ so it builds as a workspace package. Only its own
+# build config is this project's source and stays format checked.
+/packages/document-editor/src/
 # GitNexus index and tooling metadata, not part of the project's sources.
 /.gitnexus/
 /.claude/skills/

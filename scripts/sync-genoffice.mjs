@@ -42,6 +42,10 @@ const packages = [
   "ai-provider",
   "workspace-harness",
   "xlsx-gateway",
+  "ui",
+  "pptx-render",
+  "electron-utils",
+  "project-store",
 ];
 
 const vendorDir = join(root, "vendor", "genoffice");

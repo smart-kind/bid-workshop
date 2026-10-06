@@ -28,6 +28,11 @@ export default [
       // They are not this project's source and some are browser-injected
       // fragments that do not parse as modules on their own.
       "vendor/**",
+      // The document editor's renderer is a wholesale copy of upstream's
+      // genoffice sources, like vendor/** above: it carries upstream's own
+      // eslint-disable comments and would need 180 typed-rule fixes that
+      // belong upstream. Only its own build config is linted here.
+      "packages/document-editor/src/**",
       "extensions/*/dist/**",
       // Generated output lives at repository/workspace roots, never anywhere
       // named "release" or "build" inside product source.

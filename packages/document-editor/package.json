@@ -1,0 +1,39 @@
+{
+  "name": "@bid-workshop/document-editor",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Genoffice document editor renderer, built as a standalone static bundle.",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@genoffice/agent-core": "workspace:*",
+    "@genoffice/ai-provider": "workspace:*",
+    "@genoffice/docx-engine": "workspace:*",
+    "@genoffice/electron-utils": "workspace:*",
+    "@genoffice/font-metrics": "workspace:*",
+    "@genoffice/i18n": "workspace:*",
+    "@genoffice/pptx-render": "workspace:*",
+    "@genoffice/project-store": "workspace:*",
+    "@genoffice/ui": "workspace:*",
+    "@tiptap/core": "3.31.0",
+    "@tiptap/extensions": "3.31.0",
+    "@tiptap/pm": "3.31.0",
+    "@tiptap/react": "3.31.0",
+    "marked": "^18.0.11",
+    "pdfjs-dist": "^6.2.108",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.9.3",
+    "vite": "^6.2.0"
+  }
+}
