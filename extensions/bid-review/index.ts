@@ -1,3 +1,4 @@
+import { isAbsolute, resolve } from "node:path";
 import { defineFacet } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
@@ -48,6 +49,18 @@ interface LoadDocumentDetails {
   error?: string;
 }
 
+/** The session workspace, learned at session start. */
+let sessionCwd: string | null = null;
+
+/**
+ * The panel only knows file names, so a relative path is resolved against the
+ * session workspace. Falling back to the process cwd would look for the file
+ * beside the app instead of in the workspace the user is working in.
+ */
+function resolveDocumentPath(filePath: string): string {
+  return isAbsolute(filePath) ? filePath : resolve(sessionCwd ?? process.cwd(), filePath);
+}
+
 /** Details reported by bid_start_review, shared by both branches. */
 interface StartReviewDetails {
   fileIds: string[];
@@ -73,8 +86,8 @@ const FINDING = Type.Object({
 });
 
 /** Parse a .docx and register it as a loaded document. */
-async function ingestDocument(filePath: string): Promise<BidDocument> {
-  const bid = await loadBidDocument(filePath);
+async function ingestDocument(inputPath: string): Promise<BidDocument> {
+  const bid = await loadBidDocument(resolveDocumentPath(inputPath));
   const loaded: BidDocument = {
     id: crypto.randomUUID(),
     name: bid.name,
@@ -116,11 +129,13 @@ export default function bidReview(pi: ExtensionAPI) {
 
   pi.on("session_start", (_event, context) => {
     ctx = context;
+    sessionCwd = context.cwd ?? null;
     publish(initialState());
   });
 
   pi.on("session_tree", (_event, context) => {
     ctx = context;
+    sessionCwd = context.cwd ?? null;
     publish(initialState());
   });
 

@@ -14,6 +14,8 @@ export async function mount(
     .bid-view h2{font-size:15px;margin:0 0 4px;font-weight:600}
     .bid-view p{margin:0 0 12px}
     .bid-meta{font-size:12px;opacity:.65}
+    .bid-outline{margin:0 0 12px;padding-left:18px;font-size:12px;opacity:.75;line-height:1.7}
+    .bid-outline li{margin:0}
     .bid-actions{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
     .bid-view button{font:inherit;border:1px solid color-mix(in srgb,var(--fg) 18%,transparent);border-radius:6px;background:transparent;color:inherit;padding:6px 10px;cursor:pointer}
     .bid-view button:hover:not(:disabled){background:color-mix(in srgb,var(--fg) 7%,transparent)}
@@ -83,19 +85,11 @@ export async function mount(
     view.appendChild(p);
   }
 
-  function getWorkspacePath(): string | null {
-    try {
-      const url = new URL(window.location.href);
-      return url.searchParams.get("cwd") || null;
-    } catch {
-      return null;
-    }
-  }
-
   function loadSampleFile(filename: string) {
-    const cwd = getWorkspacePath();
-    const filePath = cwd ? `${cwd}/${filename}` : filename;
-    service.loadDocument({ filePath }, BACKGROUND_CONTEXT);
+    // The frame URL carries no query, and the frame is served without an import
+    // map, so the panel cannot learn the workspace path here. It sends the bare
+    // name and the backend resolves it against the session workspace.
+    service.loadDocument({ filePath: filename }, BACKGROUND_CONTEXT);
   }
 
   function render() {
@@ -144,11 +138,32 @@ export async function mount(
       return;
     }
 
-    // File list
+    // File list. What was parsed is shown, not just the file names, so the
+    // document actually being read is visible rather than assumed.
     const meta = doc.createElement("p");
     meta.className = "bid-meta";
     meta.textContent = `已加载 ${state.loadedFiles.length} 份文件：${state.loadedFiles.map((f) => f.name).join("、")}`;
     view.appendChild(meta);
+
+    for (const file of state.loadedFiles) {
+      const summary = doc.createElement("p");
+      summary.className = "bid-meta";
+      summary.dataset.file = file.name;
+      summary.textContent = `${file.name}：${file.blockCount} 个块，${file.tableCount} 张表，${file.sections.length} 个标题`;
+      view.appendChild(summary);
+
+      if (file.sections.length > 0) {
+        const outline = doc.createElement("ul");
+        outline.className = "bid-outline";
+        outline.dataset.outline = file.name;
+        for (const title of file.sections) {
+          const item = doc.createElement("li");
+          item.textContent = title;
+          outline.appendChild(item);
+        }
+        view.appendChild(outline);
+      }
+    }
 
     // Actions
     const actions = doc.createElement("div");

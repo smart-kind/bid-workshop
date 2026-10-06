@@ -300,22 +300,22 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 > 上一版的现状表**不可用**。它是对着 GitHub 上的提交写的，而本项目大量工作当时还躺在本地未提交，
 > 因此它把「已实现」误记为「未做」。下表是核对本地工作树后的实际状态。
 
-| 项目                                  | 状态                                                                       |
-| ------------------------------------- | -------------------------------------------------------------------------- |
-| pi-gui 壳 fork 到 bid-workshop        | ✅ 已完成                                                                  |
-| 品牌改名 + 移除无关模块               | ✅ 已完成                                                                  |
-| genoffice 包引入（symlink）           | ✅ 已完成，链接全部有效（10 个包）                                         |
-| GitHub 仓库 (smart-kind/bid-workshop) | ✅ 已创建并推送，分支 `main`，**公开仓库**                                 |
-| bid-review 扩展                       | ⚠️ 已有完整 mock 实现（已提交 `36d94cf`）                                  |
-| workspace-harness 复用通道            | ✅ 已打通（子路径 exports，实测可 import）                                 |
-| **样例标书 .docx**                    | ✅ 已完成（`workspaces/bid-sample/投标文件-某软件科技.docx`，含 6 个埋点） |
-| 评审条件                              | ✅ 已完成（`workspaces/bid-sample/评审条件.md`）                           |
-| **文档加载链路**（docx → 结构化数据） | ✅ 已完成（`document.ts` + `parser-docx.mjs`，实测解析真实文档通过）       |
-| 期望输出（带批注的 .docx）            | ❌ 未做                                                                    |
-| manifest.json                         | ❌ 未做                                                                    |
-| AI 审查逻辑                           | ✅ 已完成（`review.ts` + `bid_record_findings`，模型执行审查）             |
-| Word 批注输出                         | ❌ 未做。机制已验证可行，未接进产品                                        |
-| UI 集成                               | ⚠️ 面板 UI 已有，已指向真实 .docx；右侧文档区未接                          |
+| 项目                                  | 状态                                                                                                |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| pi-gui 壳 fork 到 bid-workshop        | ✅ 已完成                                                                                           |
+| 品牌改名 + 移除无关模块               | ✅ 已完成                                                                                           |
+| genoffice 包引入（symlink）           | ✅ 已完成，链接全部有效（10 个包）                                                                  |
+| GitHub 仓库 (smart-kind/bid-workshop) | ✅ 已创建并推送，分支 `main`，**公开仓库**                                                          |
+| bid-review 扩展                       | ⚠️ 已有完整 mock 实现（已提交 `36d94cf`）                                                           |
+| workspace-harness 复用通道            | ✅ 已打通（子路径 exports，实测可 import）                                                          |
+| **样例标书 .docx**                    | ✅ 已完成（`workspaces/bid-sample/投标文件-某软件科技.docx`，含 6 个埋点）                          |
+| 评审条件                              | ✅ 已完成（`workspaces/bid-sample/评审条件.md`）                                                    |
+| **文档加载链路**（docx → 结构化数据） | ✅ 已完成（`document.ts` + `parser-docx.mjs`，实测解析真实文档通过）                                |
+| 期望输出（带批注的 .docx）            | ❌ 未做                                                                                             |
+| manifest.json                         | ❌ 未做                                                                                             |
+| AI 审查逻辑                           | ✅ 已完成（`review.ts` + `bid_record_findings`，模型执行审查）                                      |
+| Word 批注输出                         | ❌ 未做。机制已验证可行，未接进产品                                                                 |
+| UI 集成                               | ⚠️ 面板已在真实 Electron 中跑通（加载真实 .docx + 展示解析结果，有 core lane 回归）；右侧文档区未接 |
 
 **bid-review 已有的实际代码**（已提交，`36d94cf`）：
 
@@ -484,13 +484,40 @@ lockfile 里没有 vendor 包的 importer，`pnpm install` 也不会写进去（
 锚点精确落在预期的块（41 / 55 / 66 / 69）、且 `blocks=74 headings=17 tables=3 chars=2201`
 与原文**完全一致**（正文逐字相同、表格逐字相同）——即没有破坏任何原有排版。
 
-### 第 5 步：UI 集成
+### 第 5 步：UI 集成 — 进行中（面板已打通）
 
-- 左侧：AI 对话（pi-gui 已有）
-- 右侧：Word 文档预览和编辑（genoffice 部件）
-- 用户看到 AI 审查过程 + 文档上实时出现的批注
+- 左侧：AI 对话（pi-gui 已有）✅
+- 右侧：Word 文档预览和编辑（genoffice 部件）❌ 未做
+- 用户看到 AI 审查过程 + 文档上实时出现的批注 ❌ 未做
+
+**已完成的前置（原本是坏的三处，见「面板为何此前从未渲染」）**：
+
+- 面板能在真实 Electron 里渲染并加载真实 .docx，core lane 有回归测试守住：
+  `pnpm --filter @bid-workshop/desktop run test:core:bid-review`
+- 面板展示解析结果（块数 / 表数 / 章节大纲），不再只显示文件名
+
+**仍未做**：右侧文档区（把 genoffice 编辑器作为部件接上），以及批注在编辑器里实时可见。
 
 依赖关系：第 0 步先行且独立；第 1 步独立；第 2→3→4 步串行；第 5 步在 2-4 通了之后做。
+
+---
+
+## 面板为何此前从未渲染
+
+第 5 步开工前，Electron 面的验证暴露了三处缺陷。**三处都是既有问题，不是第 2–4 步引入的**——
+也就是说这块面板在真相之前**从未真正跑起来过**，「面板 UI 已有」的说法是虚的。
+
+| #   | 缺陷                                             | 现象                                                                                                                                                        | 修法                                                                                                               |
+| --- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| 1   | `build.mjs` 把 `@earendil-works/*` 标为 external | 扩展 frame 当普通文档加载、**没有 import map**，`dist/desktop.js` 里残留裸模块名 → 整个模块图不执行，iframe `<body>` 全空、面板停在 `data-state="mounting"` | 构建拆成两次：`desktop.ts` 走浏览器 + **零 external**（自包含）；`index.ts` 走 Node、保留 external；关掉 splitting |
+| 2   | 面板靠 URL `?cwd=` 找文件                        | 宿主构造的 frameUrl 是 `pi-extension://<id>/` **不带 query**，且 `assetResponse` 拒绝任何 query → 传裸文件名时按应用进程目录解析 → ENOENT                   | 后端按 `ExtensionContext.cwd`（会话工作目录）解析相对路径；渲染层继续传文件名                                      |
+| 3   | 面板只渲染文件名                                 | `blockCount` / `tableCount` / `sections` 在 state 里却从不显示，没有可断言的面                                                                              | 面板渲染「N 个块，M 张表，K 个标题」+ 章节大纲                                                                     |
+
+验证：`apps/desktop/tests/core/bid-review.spec.ts`（core lane，跟真实 Electron 跑），
+断言面板显示 `74 个块` / `3 张表` 与五个真实章节标题——这些数字只有真解析才会出现，mock 满足不了。
+
+> 注意：`extensions/bid-review/dist/` 被 gitignore，全新 checkout / CI 需要先跑
+> `node extensions/bid-review/build.mjs`，面板才有的加载。
 
 ---
 
@@ -600,3 +627,11 @@ lockfile 里没有 vendor 包的 importer，`pnpm install` 也不会写进去（
     面板「开始审查」通过 `pi.sendUserMessage()` 真正触发 agent turn。删除 `mock-review.ts` 与假进度定时器。
 20. `BidIssue.location` 增加 `blockIndex` / `quote`，新增 `basis` —— 为第 4 步锚定批注铺路。
     实测 brief 组装与结论映射均 `RESULT: PASS`；CI 模拟（无 vendor）typecheck 仍通过。
+
+**2026-10-06（第六轮：第 4 步 + 面板终于跑起来）**：
+
+21. **第 4 步完成**：`bid_write_comments` 把结论写成原生 Word 批注，只重建需要批注的块、其余逐字节保留；
+    往返实测 4 条批注锚点精确、文档结构与表格完全未变。踩到两个坑（两处 id 必须一致、`w:id` 必须是整数）已记录。
+22. **Electron 验证失败并挖出三处既有缺陷**——面板**此前从未渲染成功过**。已全部修复，详见「面板为何此前从未渲染」。
+23. **core lane 回归测试**：`apps/desktop/tests/core/bid-review.spec.ts` 在真实 Electron 上加载真实 .docx，
+    断言 `74 个块` / `3 张表` 与五个真实章节标题。**已通过**（`1 passed`）。
