@@ -893,6 +893,21 @@ function installApplicationMenu(): void {
           },
         },
         { type: "separator" },
+        {
+          label: "Save Document",
+          accelerator: "CommandOrControl+S",
+          click: () => {
+            documentViewOwner?.sendMenuCommand("save");
+          },
+        },
+        {
+          label: "Save Document As…",
+          accelerator: "CommandOrControl+Shift+S",
+          click: () => {
+            documentViewOwner?.sendMenuCommand("save-as");
+          },
+        },
+        { type: "separator" },
         { role: "close" },
       ],
     },

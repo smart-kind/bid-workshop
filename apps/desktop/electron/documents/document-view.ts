@@ -3,7 +3,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { protocol, WebContentsView, type BrowserWindow } from "electron";
 import { DOCUMENT_VIEW_SCHEME } from "./document-channels";
-import { registerDocumentViewIpc } from "../ipc/document-view-ipc";
+import { registerDocumentViewIpc, sendDocumentMenuCommand } from "../ipc/document-view-ipc";
 
 /**
  * The document editor (`packages/document-editor`) is a standalone static
@@ -91,7 +91,24 @@ export class DocumentViewOwner {
     registerDocumentViewIpc({
       pendingDocumentForSender: (senderId) => this.pendingDocument(senderId),
       hasSender: (senderId) => this.entryForSender(senderId) !== undefined,
+      documentPathForSender: (senderId) => this.entryForSender(senderId)?.currentPath ?? null,
+      noteSavedPath: (senderId, absolutePath) => {
+        const entry = this.entryForSender(senderId);
+        if (entry) entry.currentPath = absolutePath;
+      },
     });
+  }
+
+  /**
+   * Runs a document menu command (Save, Save As, …) on the document view the
+   * user is looking at. A command with no focused document view is dropped: the
+   * File menu's document items belong to the editor, not to the app renderer.
+   */
+  sendMenuCommand(command: string): void {
+    sendDocumentMenuCommand(
+      { hasSender: (senderId) => this.entryForSender(senderId) !== undefined },
+      command,
+    );
   }
 
   /** Show `input.absolutePath` in `window`'s document view at `input.rect`, creating the view on first use. */

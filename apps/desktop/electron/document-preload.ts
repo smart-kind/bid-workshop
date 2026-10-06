@@ -1,23 +1,33 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { DOCUMENT_IPC } from "./documents/document-channels";
+import { DOCUMENT_IPC, DOCUMENT_PUSH } from "./documents/document-channels";
 
 /**
  * `window.desktop` for the hosted document editor.
  *
- * The real editor expects the full GenOffice shell bridge, and its mount path
- * touches several members with no optional chaining (`LocaleProvider`'s
- * `onLanguageChanged`, the bootstrap's `getLanguage`/`getTheme`, the App
- * effects' `getRecentFiles`/`getAiSettings`/`onRenamedDocx`/`onOpenDocx`/
- * `onZoteroRequest`, and the three boot consumes). Those are backed here: the
- * consumes read the real pending document from main, everything else reports
- * empty defaults.
+ * Backed for real: the boot consumes (open handoff, blank document, AI content),
+ * the whole save family (save in place, Save As, first save, save to an explicit
+ * path, crash-recovery copy), the recent-documents list, and the menu-command
+ * channel the native File > Save / Save As items drive.
  *
- * The rest of the documented surface is stubbed so no code path can throw a
- * missing-member TypeError. Save, print, export, AI, Zotero, MCP and recovery
- * features are inert until they get a real host.
+ * Still inert, each for a reason recorded in docs/shell-plan.md §七: print and
+ * export, images and the clipboard, the editor's own AI panel, Zotero, MCP, and
+ * password-protected documents.
  */
 const noop = (): void => {};
 const unsubscribe = (): (() => void) => noop;
+
+function subscribeArgs<Args extends readonly unknown[]>(
+  channel: string,
+  handler: (...args: Args) => void,
+): () => void {
+  const listener = (_event: Electron.IpcRendererEvent, ...args: unknown[]): void => {
+    handler(...(args as unknown as Args));
+  };
+  ipcRenderer.on(channel, listener);
+  return () => {
+    ipcRenderer.removeListener(channel, listener);
+  };
+}
 
 const desktop = {
   getLanguage: () => Promise.resolve("zh"),
@@ -46,15 +56,20 @@ const desktop = {
   createDocument: () => Promise.resolve({ ok: false }),
   onOpenDocx: unsubscribe,
   onRenamedDocx: unsubscribe,
-  saveDocx: () => Promise.resolve({ ok: false }),
-  writeRecoveryCopy: () => Promise.resolve({ ok: false }),
+  saveDocx: (path: string, data: ArrayBuffer, auto?: boolean) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.save, path, data, auto === true),
+  writeRecoveryCopy: (path: string, data: ArrayBuffer) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.writeRecovery, path, data),
   onTeardown: unsubscribe,
   respellKick: () => Promise.resolve(),
   spellDiag: noop,
-  saveDocxAs: () => Promise.resolve({ ok: false }),
-  saveDocxNew: () => Promise.resolve({ ok: false }),
-  saveDocxTo: () => Promise.resolve({ ok: false }),
-  getRecentFiles: () => Promise.resolve([]),
+  saveDocxAs: (defaultName: string, data: ArrayBuffer, sourcePath?: string | null) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.saveAs, defaultName, data, sourcePath ?? null),
+  saveDocxNew: (defaultName: string, data: ArrayBuffer) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.saveNew, defaultName, data),
+  saveDocxTo: (path: string, data: ArrayBuffer, overwrite: boolean) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.saveTo, path, data, overwrite === true),
+  getRecentFiles: () => ipcRenderer.invoke(DOCUMENT_IPC.recentFiles),
   pickImage: () => Promise.resolve(null),
   fontMetrics: () => Promise.resolve(null),
   getAiSettings: () => Promise.resolve({ provider: "anthropic", providers: {} }),
@@ -90,7 +105,8 @@ const desktop = {
   listDocsTabs: () => Promise.resolve([]),
   focusDocsTab: noop,
   onAiStream: unsubscribe,
-  onMenuCommand: unsubscribe,
+  onMenuCommand: (handler: (command: string, payload?: string) => void) =>
+    subscribeArgs<[string, string?]>(DOCUMENT_PUSH.menuCommand, handler),
   onCloseCheck: unsubscribe,
   reportCloseCheck: noop,
   onCloseSaveRequest: unsubscribe,
