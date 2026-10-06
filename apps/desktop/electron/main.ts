@@ -40,6 +40,7 @@ import {
   installDocumentProtocol,
 } from "./documents/document-view";
 import { readDocumentText } from "@bid-workshop/document-service";
+import { createDocumentRuntimeExtension } from "./documents/document-runtime";
 import { ReviewOwner } from "./workbench/review-owner";
 import { registerDesktopIpc } from "./ipc/register-desktop-ipc";
 import {
@@ -1074,6 +1075,12 @@ app
               return undefined;
             }
           }),
+        },
+        {
+          name: "pi-gui-documents",
+          displayName: "Documents",
+          description: "Lets pi read, create and change Word documents in the thread's folder",
+          factory: createDocumentRuntimeExtension(),
         },
       ],
     };
