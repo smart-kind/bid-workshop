@@ -45,6 +45,7 @@ const OPTIONAL_REAL_AUTH_FILES = ["settings.json", "models.json"] as const;
 // var is scrubbed dynamically below, so this only needs the exceptions.
 const NON_API_KEY_PROVIDER_ENV_VARS = [
   "ANTHROPIC_OAUTH_TOKEN",
+  "ANTHROPIC_AUTH_TOKEN",
   "AWS_PROFILE",
   "AWS_ACCESS_KEY_ID",
   "AWS_SECRET_ACCESS_KEY",
