@@ -8,17 +8,35 @@ export function resolveWorkspacePath(workspacePath: string, filePath: string): s
   return resolved;
 }
 
+/**
+ * A path inside a workspace, with symlinks resolved. `root` and `path` come from
+ * the same resolution, so a relative path measured between them stays inside the
+ * workspace even when the workspace root itself is reached through a symlink
+ * (macOS reaches `/var/folders/...` as `/private/var/folders/...`).
+ */
+export interface ResolvedWorkspaceFile {
+  readonly root: string;
+  readonly path: string;
+}
+
+export async function resolveExistingWorkspaceFile(
+  workspacePath: string,
+  filePath: string,
+): Promise<ResolvedWorkspaceFile> {
+  const resolved = resolveWorkspacePath(workspacePath, filePath);
+  const [root, target] = await Promise.all([
+    realpath(path.resolve(workspacePath)),
+    realpath(resolved),
+  ]);
+  assertInsideWorkspace(root, target);
+  return { root, path: target };
+}
+
 export async function resolveExistingWorkspacePath(
   workspacePath: string,
   filePath: string,
 ): Promise<string> {
-  const resolved = resolveWorkspacePath(workspacePath, filePath);
-  const [realWorkspaceRoot, realTarget] = await Promise.all([
-    realpath(path.resolve(workspacePath)),
-    realpath(resolved),
-  ]);
-  assertInsideWorkspace(realWorkspaceRoot, realTarget);
-  return realTarget;
+  return (await resolveExistingWorkspaceFile(workspacePath, filePath)).path;
 }
 
 function assertInsideWorkspace(workspaceRoot: string, candidate: string): void {
