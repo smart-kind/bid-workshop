@@ -35,18 +35,18 @@ genoffice 的价值在于它的 docx-engine：能解析 .docx、能渲染、能�
 
 **组件来源：**
 
-| 能力 | 来源 | 位置 | 状态 |
-|---|---|---|---|
-| Electron 桌面壳 + AI Agent | pi-gui fork | `apps/desktop/` | ✅ 已引入 |
-| Word 文档解析 | genoffice `file-parse` | `vendor/genoffice/file-parse` (symlink) | ✅ 已引入（仅纯文本提取） |
-| Word 渲染/编辑/批注 | genoffice `docx-engine` | `vendor/genoffice/docx-engine` (symlink) | ✅ 已引入（**但项目代码零引用**） |
-| HTML→DOCX 转换 | genoffice `html2docx` | `vendor/genoffice/html2docx` (symlink) | ✅ 已引入 |
-| 字体度量 | genoffice `font-metrics` | `vendor/genoffice/font-metrics` (symlink) | ✅ 已引入 |
-| 国际化 | genoffice `i18n` | `vendor/genoffice/i18n` (symlink) | ✅ 已引入 |
-| 幻灯片引擎 | genoffice `pptx-engine` | `vendor/genoffice/pptx-engine` (symlink) | ✅ 已引入（上一版本文档漏记） |
-| **工作空间模型 + 文档/批注工具 + 审查工具** | **genoffice `workspace-harness`** | **未引入** | **❌ 见下节** |
-| 无头文档 CLI（调试用） | genoffice `cli` | 未引入（上游 `packages/cli`，bin `genoffice`） | ❌ 未引入 |
-| 标书审查业务逻辑 | 本项目 | `extensions/bid-review/` | ⚠️ 仅有 mock |
+| 能力                                        | 来源                              | 位置                                           | 状态                              |
+| ------------------------------------------- | --------------------------------- | ---------------------------------------------- | --------------------------------- |
+| Electron 桌面壳 + AI Agent                  | pi-gui fork                       | `apps/desktop/`                                | ✅ 已引入                         |
+| Word 文档解析                               | genoffice `file-parse`            | `vendor/genoffice/file-parse` (symlink)        | ✅ 已引入（仅纯文本提取）         |
+| Word 渲染/编辑/批注                         | genoffice `docx-engine`           | `vendor/genoffice/docx-engine` (symlink)       | ✅ 已引入（**但项目代码零引用**） |
+| HTML→DOCX 转换                              | genoffice `html2docx`             | `vendor/genoffice/html2docx` (symlink)         | ✅ 已引入                         |
+| 字体度量                                    | genoffice `font-metrics`          | `vendor/genoffice/font-metrics` (symlink)      | ✅ 已引入                         |
+| 国际化                                      | genoffice `i18n`                  | `vendor/genoffice/i18n` (symlink)              | ✅ 已引入                         |
+| 幻灯片引擎                                  | genoffice `pptx-engine`           | `vendor/genoffice/pptx-engine` (symlink)       | ✅ 已引入（上一版本文档漏记）     |
+| **工作空间模型 + 文档/批注工具 + 审查工具** | **genoffice `workspace-harness`** | **未引入**                                     | **❌ 见下节**                     |
+| 无头文档 CLI（调试用）                      | genoffice `cli`                   | 未引入（上游 `packages/cli`，bin `genoffice`） | ❌ 未引入                         |
+| 标书审查业务逻辑                            | 本项目                            | `extensions/bid-review/`                       | ⚠️ 仅有 mock                      |
 
 vendor 下的包都是 symlink，指向上游 `/Users/david/orca/workspaces/gen-document/feat-workspace/packages/` 下的对应目录。链接已核实全部有效。
 
@@ -57,23 +57,24 @@ vendor 下的包都是 symlink，指向上游 `/Users/david/orca/workspaces/gen-
 上一版本文档完全没有提到这个包，而它**正是本文档第 1–4 步的上游实现**。
 
 `@genoffice/workspace-harness`（上游 `packages/workspace-harness`）自述：
+
 > "Goal-driven document workspace harness: tool registry with effect dispatch, workspace + read-only reference storage, pi-agent host (**no Electron dependency**)"
 
 已核实其 `package.json` 依赖仅为 `pi-agent-core`、`pi-ai`、`agent-core`、`ai-provider`、`docx-engine`、`pptx-engine`、`xlsx-gateway`、`typebox`——**源码中零 `electron` 引用**，可在无头 / 非 Electron 环境直接使用。
 
 它包含的东西，和本文档的对应关系：
 
-| workspace-harness 里的实现 | 对应本文档 |
-|---|---|
-| `workspace/manifest.ts` — manifest.json 读写（schemaVersion/goal/references/documents/vcs/demo） | §核心概念「工作空间」提出的 manifest.json |
-| `workspace/zones.ts` — 四区模型，`READ_ONLY_ZONES` + `isReadOnlyPath()` 在工具层强制只读 | §设计哲學「只读引用资料是硬约束」 |
-| `workspace/references.ts` — `ReferenceStore`，把外部目录挂载进工作空间 | §核心概念 `references/` |
-| `workspace/documents.ts`、`store.ts`、`git.ts`、`conversations.ts` | 文档注册、版本、会话 |
-| `tools/document.ts`、`document-edit.ts` | 第 2、4 步的文档读写与批注 |
-| `tools/review.ts` — `review_write_findings` | **第 3 步的审查结论模型** |
-| `tools/ui.ts` — `ui_open_document` 等 | 第 5 步的编辑器联动 |
-| `workspace/demo.ts` — `ensureDemoWorkspace()` / `provisionDemoWorkspace()` | **第 1 步的样例工作空间（已有可抄的实现）** |
-| `agent/host.ts` — pi-agent host，无 Electron | 第 3 步的 Agent 运行时 |
+| workspace-harness 里的实现                                                                       | 对应本文档                                  |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| `workspace/manifest.ts` — manifest.json 读写（schemaVersion/goal/references/documents/vcs/demo） | §核心概念「工作空间」提出的 manifest.json   |
+| `workspace/zones.ts` — 四区模型，`READ_ONLY_ZONES` + `isReadOnlyPath()` 在工具层强制只读         | §设计哲學「只读引用资料是硬约束」           |
+| `workspace/references.ts` — `ReferenceStore`，把外部目录挂载进工作空间                           | §核心概念 `references/`                     |
+| `workspace/documents.ts`、`store.ts`、`git.ts`、`conversations.ts`                               | 文档注册、版本、会话                        |
+| `tools/document.ts`、`document-edit.ts`                                                          | 第 2、4 步的文档读写与批注                  |
+| `tools/review.ts` — `review_write_findings`                                                      | **第 3 步的审查结论模型**                   |
+| `tools/ui.ts` — `ui_open_document` 等                                                            | 第 5 步的编辑器联动                         |
+| `workspace/demo.ts` — `ensureDemoWorkspace()` / `provisionDemoWorkspace()`                       | **第 1 步的样例工作空间（已有可抄的实现）** |
+| `agent/host.ts` — pi-agent host，无 Electron                                                     | 第 3 步的 Agent 运行时                      |
 
 特别值得看 `tools/review.ts:139` 的 `review_write_findings`，它的参数 schema 几乎就是本文档第 3 步定义的结论结构：
 
@@ -144,12 +145,12 @@ AI 审查的结果不是生成一份新报告，而是直接在 Word 文档里�
 
 以下四个名字在上游 `packages/` 全树搜索**零命中**，上一版文档是凭空写的：
 
-| 上一版写的 | 实际情况 |
-|---|---|
-| `doc_reply_comment` | 不存在。能力只以 CLI 操作名 `reply_comment` 存在 |
-| `doc_resolve_comment` | 不存在。同上，CLI 操作名 `resolve_comment` |
-| `doc_delete_comment` | 不存在。同上，CLI 操作名 `delete_comment` |
-| `doc_get_context` | 不存在，任何地方都没有 |
+| 上一版写的            | 实际情况                                         |
+| --------------------- | ------------------------------------------------ |
+| `doc_reply_comment`   | 不存在。能力只以 CLI 操作名 `reply_comment` 存在 |
+| `doc_resolve_comment` | 不存在。同上，CLI 操作名 `resolve_comment`       |
+| `doc_delete_comment`  | 不存在。同上，CLI 操作名 `delete_comment`        |
+| `doc_get_context`     | 不存在，任何地方都没有                           |
 
 ### docx-engine 真实可用的 API
 
@@ -174,13 +175,17 @@ scanBody(...), buildBlankDocx(...), readSections(...), readSectionSettings(...),
   ```
   `parentId` 表示回复关系，`done` 表示已解决——**回复和已解决是数据字段，不是独立 API**
 - 写：`saveDocx` 的 `SaveOptions.comments?: CommentInfo[]`（`patch.ts:202`）
+
   > "Full desired comment list; word/comments.xml is regenerated from it"
 
   即**整份批注列表全量重写**，不是「逐条 add」。想加一条批注 = 读出现有列表 + 追加 + 整体传回。
+
 - 锚定：`commentIds?: string[]` 挂在 **run** 上（`types.ts:127`），不是 block：
+
   > "ids of comments whose range covers this run. Only set when the whole commentRangeStart..End pair lives inside the same paragraph"
 
   即锚定粒度是**段落内的 run 范围**，且**要求 commentRangeStart..End 落在同一段落内**。上一版说的「锚定到 block：指定 blockIndex / 锚定到 text span：指定文本范围」是对 **CLI / workspace-harness 工具层**的描述，不是引擎层的。
+
 - 写出锚点：`generate.ts:2325-2345`（`runsXml`）按 run 的 `commentIds` 首末位置生成 `<w:commentRangeStart/>` / `<w:commentRangeEnd/>` / `<w:commentReference/>`
 
 **因此第 4 步的实现路径是**：在目标 run 上挂 `commentIds`，同时把 `CommentInfo[]` 传给 `saveDocx(parsed, blocks, { comments })`，而**不是**调 `doc_add_comment`。
@@ -200,17 +205,18 @@ scanBody(...), buildBlankDocx(...), readSections(...), readSectionSettings(...),
 - `docs check` —— 校验文档，连未解决的批注线程都会报告
 
 CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
+
 > "new thread on a block, or on an exact text span inside it (occurrence picks one of several matches); the document text is untouched; author defaults to "AI Assistant""
 
 注意：CLI 包**没有 symlink 进 vendor**，`genoffice` **不在 PATH**。要用得走子进程并指向上游路径。
 
 ### 取用方式：三条路
 
-| 路线 | 做法 | 优点 | 代价 |
-|---|---|---|---|
-| A. 直接调引擎 | 引入 `docx-engine`，用 `parseDocx` / `saveDocx` | 无头、依赖最少、**已实测跑通**（见下） | 批注需自己把段落转成 generated 块并忠实带上格式 |
-| B. 复用 workspace-harness | 把 `workspace-harness` symlink 进 vendor | 工作空间/四区/只读约束/审查结论模型现成 | **当前 import 不进去**（SDK 版本冲突，见下）；`doc_*` 是活编辑器工具 |
-| C. 子进程调 CLI | 起 `genoffice docs apply --ops` | 零集成、调试期最省事 | 依赖上游绝对路径、不在 PATH、每次 fork 进程 |
+| 路线                      | 做法                                            | 优点                                    | 代价                                                                 |
+| ------------------------- | ----------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------- |
+| A. 直接调引擎             | 引入 `docx-engine`，用 `parseDocx` / `saveDocx` | 无头、依赖最少、**已实测跑通**（见下）  | 批注需自己把段落转成 generated 块并忠实带上格式                      |
+| B. 复用 workspace-harness | 把 `workspace-harness` symlink 进 vendor        | 工作空间/四区/只读约束/审查结论模型现成 | **当前 import 不进去**（SDK 版本冲突，见下）；`doc_*` 是活编辑器工具 |
+| C. 子进程调 CLI           | 起 `genoffice docs apply --ops`                 | 零集成、调试期最省事                    | 依赖上游绝对路径、不在 PATH、每次 fork 进程                          |
 
 ### 2026-10-05 实测结果
 
@@ -280,6 +286,7 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 > 第 5 步用 `saveDocx({ comments })` 而非 `doc_add_comment`。
 
 审查维度（可定制，初始样例覆盖这些）：
+
 - 资质要求是否满足
 - 报价是否合理
 - 技术方案是否完整
@@ -293,35 +300,75 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 > 上一版的现状表**不可用**。它是对着 GitHub 上的提交写的，而本项目大量工作当时还躺在本地未提交，
 > 因此它把「已实现」误记为「未做」。下表是核对本地工作树后的实际状态。
 
-| 项目 | 状态 |
-|---|---|
-| pi-gui 壳 fork 到 bid-workshop | ✅ 已完成 |
-| 品牌改名 + 移除无关模块 | ✅ 已完成 |
-| genoffice 包引入（symlink） | ✅ 已完成，链接全部有效（10 个包） |
-| GitHub 仓库 (smart-kind/bid-workshop) | ✅ 已创建并推送，分支 `main`，**公开仓库** |
-| bid-review 扩展 | ⚠️ 已有完整 mock 实现（已提交 `36d94cf`） |
-| workspace-harness 复用通道 | ✅ 已打通（子路径 exports，实测可 import） |
-| **样例标书 .docx** | ✅ 已完成（`workspaces/bid-sample/投标文件-某软件科技.docx`，含 6 个埋点） |
-| 评审条件 | ✅ 已完成（`workspaces/bid-sample/评审条件.md`） |
-| 期望输出（带批注的 .docx） | ❌ 未做 |
-| manifest.json | ❌ 未做 |
-| **文档加载链路**（docx → 结构化数据） | ❌ 未做。从未与扩展代码对接（仅脚本层用过 `parseDocx`） |
-| AI 审查逻辑 | ❌ 未做，目前是定时器 + 写死的样例数据 |
-| Word 批注输出 | ❌ 未做。机制已验证可行，未接进产品 |
-| UI 集成 | ⚠️ 面板 UI 已有（接的是 mock service）；右侧文档区未接 |
+| 项目                                  | 状态                                                                       |
+| ------------------------------------- | -------------------------------------------------------------------------- |
+| pi-gui 壳 fork 到 bid-workshop        | ✅ 已完成                                                                  |
+| 品牌改名 + 移除无关模块               | ✅ 已完成                                                                  |
+| genoffice 包引入（symlink）           | ✅ 已完成，链接全部有效（10 个包）                                         |
+| GitHub 仓库 (smart-kind/bid-workshop) | ✅ 已创建并推送，分支 `main`，**公开仓库**                                 |
+| bid-review 扩展                       | ⚠️ 已有完整 mock 实现（已提交 `36d94cf`）                                  |
+| workspace-harness 复用通道            | ✅ 已打通（子路径 exports，实测可 import）                                 |
+| **样例标书 .docx**                    | ✅ 已完成（`workspaces/bid-sample/投标文件-某软件科技.docx`，含 6 个埋点） |
+| 评审条件                              | ✅ 已完成（`workspaces/bid-sample/评审条件.md`）                           |
+| **文档加载链路**（docx → 结构化数据） | ✅ 已完成（`document.ts` + `parser-docx.mjs`，实测解析真实文档通过）       |
+| 期望输出（带批注的 .docx）            | ❌ 未做                                                                    |
+| manifest.json                         | ❌ 未做                                                                    |
+| AI 审查逻辑                           | ❌ 未做，目前是定时器 + 写死的样例数据                                     |
+| Word 批注输出                         | ❌ 未做。机制已验证可行，未接进产品                                        |
+| UI 集成                               | ⚠️ 面板 UI 已有，已指向真实 .docx；右侧文档区未接                          |
 
 **bid-review 已有的实际代码**（已提交，`36d94cf`）：
 
-| 文件 | 规模 | 内容 |
-|---|---|---|
-| `extensions/bid-review/contract.ts` | 47 行 | `BidReviewService` 接口定义 |
-| `extensions/bid-review/index.ts` | 195 行 | 3 个工具（`bid_load_document` / `bid_start_review` / `bid_export_report`）+ 命令 + desktop view 注册 + facet service |
-| `extensions/bid-review/desktop.ts` | 375 行 | 完整面板 UI：严重度/类目筛选、进度条、统计卡、结论列表 |
-| `extensions/bid-review/mock-review.ts` | 105 行 | 写实的中文审查结论样例（市政道路改造工程，5+ 条，含 critical/warning/info） |
-| `extensions/bid-review/scripts/build-sample-bid.ts` | — | 样例标书生成器（`pnpm --filter @bid-workshop/extension-bid-review run build:sample-bid`） |
+| 文件                                                | 规模   | 内容                                                                                                                 |
+| --------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------- |
+| `extensions/bid-review/contract.ts`                 | 47 行  | `BidReviewService` 接口定义                                                                                          |
+| `extensions/bid-review/index.ts`                    | 195 行 | 3 个工具（`bid_load_document` / `bid_start_review` / `bid_export_report`）+ 命令 + desktop view 注册 + facet service |
+| `extensions/bid-review/desktop.ts`                  | 375 行 | 完整面板 UI：严重度/类目筛选、进度条、统计卡、结论列表                                                               |
+| `extensions/bid-review/mock-review.ts`              | 105 行 | 写实的中文审查结论样例（市政道路改造工程，5+ 条，含 critical/warning/info）                                          |
+| `extensions/bid-review/scripts/build-sample-bid.ts` | —      | 样例标书生成器（`pnpm --filter @bid-workshop/extension-bid-review run build:sample-bid`）                            |
 
 > ⚠️ **公开仓库**：`smart-kind/bid-workshop` 是 public（已核实 `isPrivate: false`）。
 > 样例数据必须虚构。真实材料（客户名、合同金额、营业执照、财务报表）只存在于同级 `bid-workshop/资料/`，**不得进入本仓库**。
+
+---
+
+## CI 现状（重要）
+
+**CI 从首次提交起从未通过。** 已核实 `gh run list`：`feat: initial bid-workshop project`（run 37297329248）即 `failure`，
+之后每次 push 都失败。不是一个 bug，而是推送时就没到绿灯状态：
+
+| 关卡                 | 状态                   | 说明                                                                                                                             |
+| -------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `format:check`       | ❌ **仍红**            | 全仓库 16 个文件不符合 Prettier（`apps/desktop/*`、`eslint.config.mjs`、`scripts/*.mjs` 等），均非本轮引入。本轮涉及的文件已修好 |
+| `check:workspaces`   | ✅ 已修                | `extensions/bid-review` 从首次提交起缺 `typecheck` 脚本；已补 tsconfig 与脚本                                                    |
+| `typecheck`          | ✅ 已可过（无 vendor） | 见下                                                                                                                             |
+| `check:architecture` | ✅ 通过                |                                                                                                                                  |
+
+### vendor 与 CI 的不兼容（已用「解耦」绕开）
+
+`vendor/genoffice/*` 是 gitignore 的、指向仓库外的 symlink，CI 上不存在。
+只要**任何被 CI typecheck 的文件 import `@genoffice/*`**，CI 的 typecheck 就会失败。
+而且 `apps/desktop` 也在 CI 的 typecheck 覆盖内，所以「把 import 挪到应用层」并不能解决。
+
+另一个实测事实：**vendor 存在时 `pnpm install --frozen-lockfile` 会失败**——
+lockfile 里没有 vendor 包的 importer，`pnpm install` 也不会写进去（那些包的 symlink 指向仓库外）。
+也就是说这种 vendoring 方式从一开始就与 CI 的 frozen install 不兼容；
+此前没有任何代码依赖 vendor，所以这个问题一直被掩盖。
+
+**采用的解法**：
+
+- `document.ts` 只定义**自己的结构化类型**（`BidBlock` / `BidParsedDocument` / `LoadedBid`）与解析器**端口** `BidDocumentParser`，**不 import 引擎**
+- `parser-docx.mjs` 是唯一 import `@genoffice/docx-engine` 的文件。写成 `.mjs` 而非 `.ts`：CI 解析不到该模块，
+  TS 文件过不了 typecheck；配套 `parser-docx.d.mts` 给调用方类型
+- `index.ts` 在模块加载时 `setBidDocumentParser(docxParser)` 注入
+
+**代价（须知）**：适配器是普通 JS，不被 tsc 检查；`scripts/build-sample-bid.ts` 也从 tsconfig 的 `include` 中排除了
+（它同样 import 引擎）。这两个文件的正确性靠运行期验证，不靠类型检查。
+
+### 若要 CI 全绿
+
+`format:check` 还剩 16 个**既有**违规文件，多数在 `apps/desktop/`，是正在编辑的代码，本轮没有擅自重排。
+把它们统一 `pnpm format --write` 之后，CI 才有机会全绿——建议当作独立的一次清理单独提交。
 
 ---
 
@@ -357,14 +404,14 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 
    **埋入的 6 个问题**（均已核实真实存在）：
 
-   | # | 问题 | 证据 |
-   |---|---|---|
-   | 1 | 报价合计错误 | 明细合计 850,000，合计却写 800,000；且文中声称「明细合计与总价一致」 |
-   | 2 | 缺签章 | 「投标人（盖章）」「法定代表人或授权代表（签字）」两处为空 |
-   | 3 | 技术方案缺章节 | 无「项目管理计划」「质量保证措施」 |
-   | 4 | 工期超限 | 承诺 195 日历天，评审条件要求 ≤180 |
-   | 5 | 证明材料未附 | 称「详见附件一/附件二」，实际无附件 |
-   | 6 | 无页码 | 无页眉页脚、无 PAGE 域 |
+   | #   | 问题           | 证据                                                                 |
+   | --- | -------------- | -------------------------------------------------------------------- |
+   | 1   | 报价合计错误   | 明细合计 850,000，合计却写 800,000；且文中声称「明细合计与总价一致」 |
+   | 2   | 缺签章         | 「投标人（盖章）」「法定代表人或授权代表（签字）」两处为空           |
+   | 3   | 技术方案缺章节 | 无「项目管理计划」「质量保证措施」                                   |
+   | 4   | 工期超限       | 承诺 195 日历天，评审条件要求 ≤180                                   |
+   | 5   | 证明材料未附   | 称「详见附件一/附件二」，实际无附件                                  |
+   | 6   | 无页码         | 无页眉页脚、无 PAGE 域                                               |
 
    > ⚠️ **脱敏是硬要求**。基底材料取自同级 `bid-workshop/资料/`（真实公司简介、合同协议集），
    > 但 `smart-kind/bid-workshop` 是**公开仓库**（已核实 `isPrivate: false`）。
@@ -378,12 +425,17 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 
 4. **manifest.json** — ❌ **未做**：工作空间元数据（依赖第 0 步的四区模型决策）
 
-### 第 2 步：文档加载链路
+### 第 2 步：文档加载链路 — ✅ 已完成
 
 - bid-review 扩展接收 .docx 文件
-- 调用 `parseDocx(bytes)` 解析（**不是** `doc_read_blocks`）
-- 提取结构化内容（block 列表、章节结构、表格数据）
-- 把内容交给 AI Agent
+- 经 `document.ts` 的解析器端口调用引擎 `parseDocx`（**不是** `doc_read_blocks`）
+- 提取结构化内容：**章节大纲**（带 blockIndex）、**表格**（行列 + 单元格文本）、**全文**
+- 通过 `bid_load_document` 把大纲 + 正文交给 AI Agent（正文超过 60k 字截断并注明）
+- 解析结果按文档 id 缓存在模块级 Map，不进 replicated state（保持可序列化）
+
+实现拆分：`document.ts`（纯逻辑：端口、结构化总结、文本渲染）+ `parser-docx.mjs`（唯一碰引擎的适配器）。
+
+实测：对 `投标文件-某软件科技.docx` 跑通 —— 17 个标题、3 张表（5×4 / 6×5 / 6×4，表头正确）、全文提取正常，`RESULT: PASS`。
 
 ### 第 3 步：AI 审查逻辑
 
@@ -422,14 +474,18 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 ## 已有代码说明
 
 ### `extensions/bid-review/contract.ts`
+
 定义了 BidReviewService 接口：
+
 - `BidDocument` — 已加载的文档信息
 - `BidIssue` — 一条审查问题（severity: critical/warning/info, category, title, description, location, suggestion）
 - `BidReviewState` — 审查状态（loadedFiles, reviewStatus, issues, summary, progress）
 - `BidReviewService` — 服务接口（loadDocument, startReview, cancelReview, exportReport）
 
 ### `extensions/bid-review/index.ts` 和 `desktop.ts`
+
 **不是空壳**（上一版这里写错了）。已有可跑的 mock 全链路：
+
 - `index.ts` 注册了 `bid_load_document` / `bid_start_review` / `bid_export_report` 三个工具、`bid-review` 命令，
   并通过 `registerDesktopView` + `defineFacet` 把面板接到 `BidReviewService`
 - `desktop.ts` 是 375 行的面板 UI（筛选、进度、统计、结论列表）
@@ -453,6 +509,7 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 上表中 `design-docs/` 与 `skills/` 位于**上游仓库根目录**，不在 `vendor/genoffice/` 内——`vendor/genoffice/` 只挂了 `packages/` 下的 6 个包。
 
 ### 新增参考（本次修订发现）
+
 - 上游 `packages/workspace-harness/` — 工作空间模型、四区、只读约束、`review_write_findings`、批注工具的现成实现，**建议在动手前通读**
 - 上游 `apps/workspace-shell/` — 已建成的「工作空间 + 文件树 + 会话 + agent 对话」桌面壳，第 5 步的重要参照
 - 上游 `packages/cli/src/commands/docs.ts` — `docs read/apply/check` 的完整参数与 `--comments` / `--ops` 用法
@@ -492,5 +549,13 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
     真实材料含客户名与合同金额（197 万 / 131 万 / 54 万等），产物与生成器**已全部脱敏**为虚构值；
     真实数据只留在同级 `bid-workshop/资料/`，不进本仓库。此项已写进「当前状态」作为长期约束。
 
+**2026-10-06（第四轮：第 2 步落地 + CI 真相）**：
 
-
+15. **第 2 步完成**：新增 `document.ts`（解析器端口 + 结构化总结）与 `parser-docx.mjs`（唯一碰引擎的适配器），
+    `bid_load_document` 现在真正解析 .docx 并把大纲+正文交给模型。实测对样例文档 `RESULT: PASS`。
+16. **修好 `check:workspaces`**：`extensions/bid-review` 从首次提交起就缺 `typecheck` 脚本，是 CI 红的直接原因之一；
+    已按 `examples/desktop-extensions/*` 的约定补 tsconfig 与脚本。
+17. **查清 CI 从未通过**：`gh run list` 显示首次推送即 `failure`。除 `check:workspaces` 外，
+    `format:check` 另有 16 个**既有**违规文件（未擅自重排，见「CI 现状」）。
+18. **解耦 vendor 依赖**：按「扩展不直接依赖引擎」的方向重构——端口 + `.mjs` 适配器 + `.d.mts` 声明，
+    使 CI 无 vendor 时也能 typecheck（已实测通过）。代价与剩余工作见「CI 现状」。

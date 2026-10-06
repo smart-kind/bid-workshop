@@ -63,14 +63,15 @@ export async function mount(
   let categoryFilter: string | null = null;
 
   const SAMPLE_FILES = [
-    { name: "sample-bid.json", label: "招标文件 — 某市政道路改造工程" },
-    { name: "sample-response.json", label: "投标文件 — 某建设集团有限公司" },
+    { name: "投标文件-某软件科技.docx", label: "投标文件 — 某软件科技有限公司" },
   ];
 
   const binding = host.services.open({
     services: [BidReview],
     assertAccess: () => host.signal.throwIfAborted(),
-    onError: (error) => { renderError(error.message); },
+    onError: (error) => {
+      renderError(error.message);
+    },
   });
   const service = binding.use(BidReview);
 
@@ -86,7 +87,9 @@ export async function mount(
     try {
       const url = new URL(window.location.href);
       return url.searchParams.get("cwd") || null;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   }
 
   function loadSampleFile(filename: string) {
@@ -155,7 +158,9 @@ export async function mount(
     loadMoreBtn.textContent = "加载标书";
     loadMoreBtn.disabled = state.reviewStatus === "reviewing";
     loadMoreBtn.addEventListener("click", () => {
-      const remaining = SAMPLE_FILES.filter((f) => !state.loadedFiles.some((lf) => lf.name === f.name));
+      const remaining = SAMPLE_FILES.filter(
+        (f) => !state.loadedFiles.some((lf) => lf.name === f.name),
+      );
       if (remaining.length > 0) loadSampleFile(remaining[0].name);
     });
     actions.appendChild(loadMoreBtn);
@@ -243,7 +248,11 @@ export async function mount(
         catCounts[cat] = (catCounts[cat] || 0) + 1;
       }
       const catLabels: Record<string, string> = {
-        qualification: "资质", pricing: "报价", technical: "技术", legal: "法律条款", format: "格式",
+        qualification: "资质",
+        pricing: "报价",
+        technical: "技术",
+        legal: "法律条款",
+        format: "格式",
       };
 
       // Filters
@@ -253,10 +262,15 @@ export async function mount(
       const allFilter = doc.createElement("button");
       allFilter.className = `bid-filter ${!severityFilter ? "active" : ""}`;
       allFilter.textContent = "全部";
-      allFilter.addEventListener("click", () => { severityFilter = null; categoryFilter = null; render(); });
+      allFilter.addEventListener("click", () => {
+        severityFilter = null;
+        categoryFilter = null;
+        render();
+      });
       filters.appendChild(allFilter);
 
-      for (const sev of ["critical", "warning", "info"]) {
+      const severityOrder = ["critical", "warning", "info"] as const;
+      for (const sev of severityOrder) {
         const btn = doc.createElement("button");
         const labels: Record<string, string> = { critical: "严重", warning: "警告", info: "提示" };
         btn.className = `bid-filter ${severityFilter === sev ? "active" : ""}`;
@@ -311,7 +325,11 @@ export async function mount(
     h3.appendChild(badge);
 
     const catLabels: Record<string, string> = {
-      qualification: "资质", pricing: "报价", technical: "技术", legal: "法律条款", format: "格式",
+      qualification: "资质",
+      pricing: "报价",
+      technical: "技术",
+      legal: "法律条款",
+      format: "格式",
     };
     if (issue.category) {
       const cat = doc.createElement("span");
@@ -348,7 +366,9 @@ export async function mount(
   }
 
   let unsubscribe = () => {};
-  const abort = () => { active = false; };
+  const abort = () => {
+    active = false;
+  };
   host.signal.addEventListener("abort", abort, { once: true });
 
   try {

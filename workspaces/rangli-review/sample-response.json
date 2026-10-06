@@ -9,8 +9,18 @@
     "safetyLicense": true,
     "validUntil": "2028-06-30",
     "similarProjects": [
-      { "name": "XX经济开发区基础设施建设一期工程", "year": 2024, "amount": 38500000, "client": "XX经济开发区管委会" },
-      { "name": "YY高新技术园区配套道路工程", "year": 2023, "amount": 52000000, "client": "YY高新区建设局" },
+      {
+        "name": "XX经济开发区基础设施建设一期工程",
+        "year": 2024,
+        "amount": 38500000,
+        "client": "XX经济开发区管委会"
+      },
+      {
+        "name": "YY高新技术园区配套道路工程",
+        "year": 2023,
+        "amount": 52000000,
+        "client": "YY高新区建设局"
+      },
       { "name": "ZZ新城雨污分流改造工程", "year": 2023, "amount": 28000000, "client": "ZZ市住建局" }
     ],
     "projectManager": {

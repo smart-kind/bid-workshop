@@ -6,7 +6,11 @@ export interface BidDocument {
   path: string;
   size: number;
   loadedAt: number;
+  /** heading titles, in document order */
   sections: string[];
+  blockCount: number;
+  tableCount: number;
+  charCount: number;
 }
 
 export interface BidIssue {
@@ -38,7 +42,10 @@ export interface ReportDraft {
 
 export interface BidReviewService {
   state: ReplicatedState<BidReviewState>;
-  loadDocument(input: { filePath: string }, context: Context): Promise<{ id: string; name: string; sections: string[] }>;
+  loadDocument(
+    input: { filePath: string },
+    context: Context,
+  ): Promise<{ id: string; name: string; sections: string[] }>;
   startReview(input: { fileIds: string[] }, context: Context): Promise<{ reviewId: string }>;
   cancelReview(input: Record<string, never>, context: Context): Promise<void>;
   exportReport(input: { format: "markdown" | "pdf" }, context: Context): Promise<ReportDraft>;

@@ -3,8 +3,53 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerDesktopView } from "@bid-workshop/extension-ui";
-import { BidReview, type BidReviewState } from "./contract";
+import { BidReview, type BidDocument, type BidReviewState } from "./contract";
+import { describeBid, loadBidDocument, setBidDocumentParser, type LoadedBid } from "./document";
 import { generateMockIssues, generateMockSummary } from "./mock-review";
+import { docxParser } from "./parser-docx.mjs";
+
+// Install the document engine adapter once, at module load. Everything below
+// talks to the parser interface rather than to the engine.
+setBidDocumentParser(docxParser);
+
+/** Parsed documents, keyed by document id. Kept out of the replicated state,
+ *  which has to stay serializable, so a later step can write comments back
+ *  without parsing the file again. */
+const loadedBids = new Map<string, LoadedBid>();
+
+/** Characters of document text handed to the model in a single tool result. */
+const TEXT_BUDGET = 60_000;
+
+/** Details reported by bid_load_document. Declared so the success and failure
+ *  branches agree on the tool result type. */
+interface LoadDocumentDetails {
+  id: string;
+  name: string;
+  sections: string[];
+  blockCount: number;
+  tableCount: number;
+  charCount: number;
+  truncated: boolean;
+  error?: string;
+}
+
+/** Parse a .docx and register it as a loaded document. */
+async function ingestDocument(filePath: string): Promise<BidDocument> {
+  const bid = await loadBidDocument(filePath);
+  const loaded: BidDocument = {
+    id: crypto.randomUUID(),
+    name: bid.name,
+    path: bid.path,
+    size: bid.size,
+    loadedAt: Date.now(),
+    sections: bid.outline.map((entry) => entry.title),
+    blockCount: bid.blockCount,
+    tableCount: bid.tableCount,
+    charCount: bid.charCount,
+  };
+  loadedBids.set(loaded.id, bid);
+  return loaded;
+}
 
 function initialState(): BidReviewState {
   return {
@@ -19,10 +64,7 @@ function initialState(): BidReviewState {
 
 let reviewTimer: ReturnType<typeof setTimeout> | null = null;
 
-function runMockReview(
-  getSnapshot: () => BidReviewState,
-  publish: (next: BidReviewState) => void,
-) {
+function runMockReview(getSnapshot: () => BidReviewState, publish: (next: BidReviewState) => void) {
   if (reviewTimer) clearTimeout(reviewTimer);
   const steps = [
     { progress: 20, delay: 600 },
@@ -76,28 +118,60 @@ export default function bidReview(pi: ExtensionAPI) {
   pi.registerTool({
     name: "bid_load_document",
     label: "Load bid document",
-    description: "Load a bid document (.docx or .json) for review",
+    description:
+      "Load a bid document (.docx): returns the section outline and the full text, so it can be reviewed",
     parameters: Type.Object({
-      filePath: Type.String({ minLength: 1, maxLength: 2048, description: "Path to the bid document file" }),
+      filePath: Type.String({
+        minLength: 1,
+        maxLength: 2048,
+        description: "Path to the bid document file",
+      }),
     }),
     async execute(_id, input) {
-      const doc = {
-        id: crypto.randomUUID(),
-        name: input.filePath.split("/").pop() || input.filePath,
-        path: input.filePath,
-        size: 0,
-        loadedAt: Date.now(),
-        sections: [],
-      };
-      publish({
-        ...snapshot,
-        loadedFiles: [...snapshot.loadedFiles, doc],
-        lastError: null,
-      });
-      return {
-        content: [{ type: "text", text: `Loaded: ${doc.name}` }],
-        details: { id: doc.id, sections: doc.sections.length },
-      };
+      try {
+        const doc = await ingestDocument(input.filePath);
+        publish({
+          ...snapshot,
+          loadedFiles: [...snapshot.loadedFiles, doc],
+          lastError: null,
+        });
+        const bid = loadedBids.get(doc.id)!;
+        const truncated = bid.text.length > TEXT_BUDGET;
+        const body = truncated
+          ? `${bid.text.slice(0, TEXT_BUDGET)}\n……（正文过长，已截断）`
+          : bid.text;
+        const details: LoadDocumentDetails = {
+          id: doc.id,
+          name: doc.name,
+          sections: doc.sections,
+          blockCount: doc.blockCount,
+          tableCount: doc.tableCount,
+          charCount: doc.charCount,
+          truncated,
+        };
+        return {
+          content: [{ type: "text", text: `${describeBid(bid)}\n\n--- 正文 ---\n${body}` }],
+          details,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        publish({ ...snapshot, lastError: message });
+        const details: LoadDocumentDetails = {
+          id: "",
+          name: input.filePath,
+          sections: [],
+          blockCount: 0,
+          tableCount: 0,
+          charCount: 0,
+          truncated: false,
+          error: message,
+        };
+        return {
+          content: [{ type: "text", text: `无法加载 ${input.filePath}：${message}` }],
+          details,
+          isError: true,
+        };
+      }
     },
   });
 
@@ -109,10 +183,19 @@ export default function bidReview(pi: ExtensionAPI) {
       fileIds: Type.Array(Type.String(), { minItems: 1, maxItems: 20 }),
     }),
     async execute(_id, input) {
-      publish({ ...snapshot, reviewStatus: "reviewing", progress: 0, issues: [], summary: null, lastError: null });
+      publish({
+        ...snapshot,
+        reviewStatus: "reviewing",
+        progress: 0,
+        issues: [],
+        summary: null,
+        lastError: null,
+      });
       runMockReview(getSnapshot, publish);
       return {
-        content: [{ type: "text", text: `Bid review started for ${input.fileIds.length} document(s)` }],
+        content: [
+          { type: "text", text: `Bid review started for ${input.fileIds.length} document(s)` },
+        ],
         details: { fileIds: input.fileIds },
       };
     },
@@ -153,18 +236,13 @@ export default function bidReview(pi: ExtensionAPI) {
           const state = env.replicatedState(snapshot);
           const listener = (next: BidReviewState) => state.replace(BACKGROUND_CONTEXT, next);
           listeners.add(listener);
-          env.own(() => { listeners.delete(listener); });
+          env.own(() => {
+            listeners.delete(listener);
+          });
           env.provide(BidReview, {
             state,
             async loadDocument(input) {
-              const doc = {
-                id: crypto.randomUUID(),
-                name: input.filePath.split("/").pop() || input.filePath,
-                path: input.filePath,
-                size: 0,
-                loadedAt: Date.now(),
-                sections: [],
-              };
+              const doc = await ingestDocument(input.filePath);
               publish({
                 ...snapshot,
                 loadedFiles: [...snapshot.loadedFiles, doc],
@@ -174,7 +252,13 @@ export default function bidReview(pi: ExtensionAPI) {
             },
             async startReview(input) {
               const reviewId = crypto.randomUUID();
-              publish({ ...snapshot, reviewStatus: "reviewing", progress: 0, issues: [], summary: null });
+              publish({
+                ...snapshot,
+                reviewStatus: "reviewing",
+                progress: 0,
+                issues: [],
+                summary: null,
+              });
               runMockReview(getSnapshot, publish);
               return { reviewId };
             },
@@ -186,7 +270,11 @@ export default function bidReview(pi: ExtensionAPI) {
               publish({ ...snapshot, reviewStatus: "idle", progress: 0 });
             },
             async exportReport(input) {
-              return { title: "Bid Review Report", content: snapshot.summary || "", outputPath: "/tmp/report" };
+              return {
+                title: "Bid Review Report",
+                content: snapshot.summary || "",
+                outputPath: "/tmp/report",
+              };
             },
           });
         },

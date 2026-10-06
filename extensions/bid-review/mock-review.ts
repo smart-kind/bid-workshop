@@ -52,7 +52,8 @@ export function generateMockIssues(): BidIssue[] {
       description:
         "投标文件提供了2项类似工程业绩，但仅列出项目名称、年份和金额，未附中标通知书或合同复印件等证明材料。",
       location: { section: "第二章 投标人资格要求", page: 7 },
-      suggestion: "要求补充提供业绩证明材料原件扫描件，包括但不限于中标通知书、合同协议书、竣工验收报告。",
+      suggestion:
+        "要求补充提供业绩证明材料原件扫描件，包括但不限于中标通知书、合同协议书、竣工验收报告。",
     },
     {
       id: "issue-6",
@@ -72,7 +73,8 @@ export function generateMockIssues(): BidIssue[] {
       description:
         "HDPE排水管DN600报价280元/m，参考同期市场信息价约220-250元/m，偏高约12-27%，且工程量3200m金额较大（合计89.6万元）。",
       location: { section: "第五章 工程量清单", page: 30 },
-      suggestion: "要求提供管材采购合同或厂家报价函，核实单价合理性。可考虑暂估价或甲供材方式控制成本。",
+      suggestion:
+        "要求提供管材采购合同或厂家报价函，核实单价合理性。可考虑暂估价或甲供材方式控制成本。",
     },
     {
       id: "issue-8",

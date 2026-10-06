@@ -366,9 +366,15 @@ importers:
         specifier: workspace:*
         version: link:../../vendor/genoffice/workspace-harness
     devDependencies:
+      '@types/node':
+        specifier: '*'
+        version: 24.12.2
       esbuild:
         specifier: '*'
         version: 0.28.2
+      typescript:
+        specifier: '*'
+        version: 5.9.3
 
   packages/catalogs:
     dependencies:
@@ -5225,7 +5231,7 @@ snapshots:
 
   '@types/keyv@3.1.4':
     dependencies:
-      '@types/node': 22.19.15
+      '@types/node': 24.12.2
 
   '@types/mdast@4.0.4':
     dependencies:
@@ -7352,7 +7358,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.2
-      '@types/node': 22.19.15
+      '@types/node': 24.12.2
       long: 5.3.2
 
   proxy-agent-negotiate@1.1.0: {}

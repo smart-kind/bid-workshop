@@ -16,8 +16,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const root = resolve(__dirname, "..");
 
-const genofficeRoot =
-  process.argv[2] ?? resolve(root, "../gen-document/feat-workspace");
+const genofficeRoot = process.argv[2] ?? resolve(root, "../gen-document/feat-workspace");
 
 const packages = [
   "docx-engine",
