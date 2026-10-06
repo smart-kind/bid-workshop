@@ -184,6 +184,11 @@
 这样主进程的项目永远看不到引擎源码——`packages/document-editor` 走的也是「自己的 tsconfig + 自己构建」这条路。
 （「给 docx-engine 自己加一个 tsc build」也考虑过：它的产物里仍是无扩展名导入，运行时还是不成，故不选。）
 
+**已落地**：`packages/document-service/`（自带 tsconfig，`moduleResolution: bundler`，包内单文件无相对导入问题），
+`apps/desktop` 以普通依赖引用它，`electron.vite.config.mjs` 把它连同引擎一起打进 main bundle。
+验证：`test:core:document-service` —— 真实 Electron 里主进程读一份 `.docx` 并取出真实文本
+（`main.js` 从 963 KB 涨到 2.23 MB，`parseDocx` 确实在产物里）。
+
 **F4 — 编辑能力两条路都接，但各司其职。**
 
 - **活文档（人正在看的）**：走渲染层 MCP 桥（`onMcpCommand`/`reportMcpResult`/`signalMcpReady` + 主进程路由），
