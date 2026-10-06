@@ -19,6 +19,7 @@
     "test:baseline": "pnpm test:guards && pnpm --filter @bid-workshop/catalogs test && pnpm --filter @bid-workshop/pi-sdk-driver test && pnpm --filter @bid-workshop/extension-ui test && pnpm test:desktop-unit",
     "check:architecture": "node scripts/check-renderer-boundary.mjs && node scripts/check-contract-authority.mjs && node scripts/check-host-boundary.mjs && node scripts/check-timeline-owner.mjs",
     "check:workspaces": "node scripts/check-workspace-typechecks.mjs",
+    "verify:release-version": "node scripts/verify-release-version.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:desktop-unit": "playwright test -c apps/desktop/playwright.config.ts apps/desktop/tests/unit",

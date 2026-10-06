@@ -377,6 +377,26 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 | `typecheck`          | ✅ 通过 | 16 个 workspace 全过，含全部 vendored 包与 `apps/desktop`                                                                   |
 | `check:architecture` | ✅ 通过 |                                                                                                                             |
 
+### 与 pi-gui 的发布身份尚未剥离（CI 有两步因此移除）
+
+CI 的 `typecheck` job 原本还跑两步：`pnpm verify:install-copy` 与 `pnpm verify:release-config`。
+**它们从未生效过——根 `package.json` 里根本没有这两个脚本**，所以 CI 走到这里必然
+`Command not found`。这是 CI 一直红的最后一环。
+
+接上之后才发现更深一层：它们断言的是 **pi-gui 的发行身份**——
+
+- `scripts/verify-install-copy.mjs` 要求 README 含 pi-gui 的发行文案（`.dmg`/`.AppImage`/`.exe`、
+  `brew install --cask pi-gui`）
+- `apps/desktop/scripts/verify-release-config.mjs` 断言 homepage 必须等于 `github.com/minghinmatthewlam/pi-gui`、
+  Linux 可执行名与 deb 包名必须是 `pi-gui`
+
+同一身份还散落在 `scripts/homebrew-tap-utils.mjs`、`apps/desktop/scripts/verify-linux-release.sh`、
+`.github/workflows/release.yml`（推送 `minghinmatthewlam/homebrew-tap`）。
+
+**处理**：保留真正成立的检查（`verify:launcher-contract`、`verify:release-version`，后者已接到根 scripts 并通过），
+**移除那两步**并在 `ci.yml` 里写明原因。把发布身份接过来（README、包元数据、Homebrew tap、release workflow）
+是**独立的一块工作**，半途改会留下一条断掉的发布链。
+
 ### vendor 与 CI：已从根上解决
 
 原先 `vendor/genoffice/*` 是 gitignore 的、指向仓库外的 symlink，于是**任何被 CI typecheck 的文件
