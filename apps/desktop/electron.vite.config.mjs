@@ -24,7 +24,9 @@ export default defineConfig(({ command }) => {
           exclude: [
             "@earendil-works/chord",
             "@bid-workshop/extension-ui",
+            "@bid-workshop/document-ai",
             "@bid-workshop/document-service",
+            "@genoffice/ai-provider",
             "@genoffice/docx-engine",
             "@genoffice/pptx-engine",
           ],

@@ -110,6 +110,7 @@ import {
   toSessionQueuedMessages,
   toSessionRef,
 } from "./app-store-utils";
+import { resolveAgentDir } from "./agent-dir";
 import type {
   CustomProviderConfig,
   McpServerScope,
@@ -4799,13 +4800,6 @@ function isSessionLeasedError(error: unknown): error is SessionLeasedError {
   );
 }
 
-/**
- * Path to pi's global settings file, mirroring the runtime's own resolution
- * (`getAgentDir()/settings.json`). We resolve it locally rather than importing
- * the runtime's helper because `@earendil-works/pi-coding-agent` is ESM-only and
- * cannot be `require`d from the CJS Electron main bundle; the app store passes no
- * custom `agentDir`, so the default resolution here matches the driver's.
- */
 /** `mtimeMs` of a file, or undefined if it does not exist / cannot be stat'd. */
 async function statMtimeMs(path: string): Promise<number | undefined> {
   try {
@@ -4821,14 +4815,9 @@ function withHomeAsTilde(path: string): string {
   return path.startsWith(`${home}${sep}`) ? `~${path.slice(home.length)}` : path;
 }
 
+/** Path to pi's global settings file (`getAgentDir()/settings.json`). */
 function resolveGlobalSettingsPath(): string {
-  const override = process.env.PI_CODING_AGENT_DIR;
-  const agentDir = override
-    ? override.startsWith("~")
-      ? join(homedir(), override.slice(1))
-      : override
-    : join(homedir(), ".pi", "agent");
-  return join(agentDir, "settings.json");
+  return join(resolveAgentDir(), "settings.json");
 }
 
 async function readProjectModelSettingsFile(

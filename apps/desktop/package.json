@@ -7,7 +7,7 @@
   "description": "AI-powered bid review desktop application",
   "main": "out/main/main.js",
   "scripts": {
-    "build:deps": "pnpm --dir ../.. --filter @bid-workshop/session-driver --filter @bid-workshop/pi-sdk-driver --filter @bid-workshop/extension-ui --filter @bid-workshop/catalogs --filter @bid-workshop/document-editor run build",
+    "build:deps": "pnpm --dir ../.. --filter @bid-workshop/session-driver --filter @bid-workshop/pi-sdk-driver --filter @bid-workshop/extension-ui --filter @bid-workshop/catalogs --filter @bid-workshop/document-editor --filter @bid-workshop/document-service --filter @bid-workshop/document-ai run build",
     "build:notification-helper": "node scripts/build-notification-status-helper.mjs",
     "dev": "node scripts/dev.mjs",
     "build": "pnpm run build:deps && pnpm run build:notification-helper && electron-vite build",
@@ -62,6 +62,7 @@
     "test:core:document-comments": "pnpm build && cross-env PI_APP_TEST_LANE=core PI_APP_REAL_AUTH=0 PI_APP_TEST_MODE=background pnpm --dir ../.. exec playwright test -c apps/desktop/playwright.config.ts apps/desktop/tests/core/document-comments.spec.ts",
     "test:core:document-revisions": "pnpm build && cross-env PI_APP_TEST_LANE=core PI_APP_REAL_AUTH=0 PI_APP_TEST_MODE=background pnpm --dir ../.. exec playwright test -c apps/desktop/playwright.config.ts apps/desktop/tests/core/document-revisions.spec.ts",
     "test:core:document-service": "pnpm build && cross-env PI_APP_TEST_LANE=core PI_APP_REAL_AUTH=0 PI_APP_TEST_MODE=background pnpm --dir ../.. exec playwright test -c apps/desktop/playwright.config.ts apps/desktop/tests/core/document-service.spec.ts",
+    "test:core:document-ai": "pnpm build && cross-env PI_APP_TEST_LANE=core PI_APP_REAL_AUTH=0 PI_APP_TEST_MODE=background pnpm --dir ../.. exec playwright test -c apps/desktop/playwright.config.ts apps/desktop/tests/core/document-ai.spec.ts",
     "test:core:document-export": "pnpm build && cross-env PI_APP_TEST_LANE=core PI_APP_REAL_AUTH=0 PI_APP_TEST_MODE=background pnpm --dir ../.. exec playwright test -c apps/desktop/playwright.config.ts apps/desktop/tests/core/document-export.spec.ts",
     "test:core:document-new": "pnpm build && cross-env PI_APP_TEST_LANE=core PI_APP_REAL_AUTH=0 PI_APP_TEST_MODE=background pnpm --dir ../.. exec playwright test -c apps/desktop/playwright.config.ts apps/desktop/tests/core/document-new.spec.ts",
     "test:core:extension-dock": "pnpm build && cross-env PI_APP_TEST_LANE=core PI_APP_REAL_AUTH=0 PI_APP_TEST_MODE=background pnpm --dir ../.. exec playwright test -c apps/desktop/playwright.config.ts apps/desktop/tests/core/extension-dock.spec.ts",
@@ -89,6 +90,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.124.0",
+    "@genoffice/ai-provider": "workspace:*",
     "@aws-crypto/sha256-browser": "5.2.0",
     "@aws-crypto/sha256-js": "5.2.0",
     "@aws-sdk/client-bedrock-runtime": "3.1127.0",
@@ -105,6 +107,7 @@
     "@aws/lambda-invoke-store": "^0.2.2",
     "@earendil-works/chord": "^1.0.0",
     "@earendil-works/pi-coding-agent": "^1.0.0",
+    "@bid-workshop/document-ai": "workspace:*",
     "@bid-workshop/document-service": "workspace:*",
     "@google/genai": "2.21.0",
     "@mistralai/mistralai": "2.2.6",

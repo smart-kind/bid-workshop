@@ -221,10 +221,9 @@ test("a new workspace cannot silently receive only syntax lint", async () => {
   const configPath = path.join(registered, "eslint.config.mjs");
   writeFileSync(
     configPath,
-    readFileSync(configPath, "utf8").replace(
-      '...["catalogs", "pi-sdk-driver", "session-driver", "extension-ui", "document-service"]',
-      '...["catalogs", "pi-sdk-driver", "session-driver", "extension-ui", "new-feature"]',
-    ),
+    // The fixture has no document-service; swapping that one entry for the
+    // workspace it does have is what registers a concrete typed project.
+    readFileSync(configPath, "utf8").replace('"document-service",', '"new-feature",'),
   );
   mkdirSync(path.join(registeredWorkspace, "src"));
   const source = path.join(registeredWorkspace, "src/index.ts");

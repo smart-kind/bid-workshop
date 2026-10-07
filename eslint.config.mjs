@@ -114,12 +114,15 @@ export default [
     ],
     "apps/desktop/tsconfig.lint.json",
   ),
-  ...["catalogs", "pi-sdk-driver", "session-driver", "extension-ui", "document-service"].map(
-    (name) =>
-      typedProject(
-        [`packages/${name}/**/*.{ts,tsx,mts,cts}`],
-        `packages/${name}/tsconfig.lint.json`,
-      ),
+  ...[
+    "catalogs",
+    "pi-sdk-driver",
+    "session-driver",
+    "extension-ui",
+    "document-ai",
+    "document-service",
+  ].map((name) =>
+    typedProject([`packages/${name}/**/*.{ts,tsx,mts,cts}`], `packages/${name}/tsconfig.lint.json`),
   ),
   // One program for every example: a program per example ran typed lint out of memory in CI.
   typedProject(["extensions/**/*.{ts,tsx,mts,cts}"], "extensions/tsconfig.lint.json"),

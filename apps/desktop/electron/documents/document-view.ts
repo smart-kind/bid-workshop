@@ -3,6 +3,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { protocol, webContents, WebContentsView, type BrowserWindow } from "electron";
 import { DOCUMENT_PUSH, DOCUMENT_VIEW_SCHEME } from "./document-channels";
+import { registerDocumentAiIpc } from "../ipc/document-ai-ipc";
 import {
   prepareDocumentForLeave,
   registerDocumentViewIpc,
@@ -104,6 +105,7 @@ export class DocumentViewOwner {
       openDocumentForSender: (senderId, absolutePath) =>
         this.openDocumentForSender(senderId, absolutePath),
     });
+    registerDocumentAiIpc({ hasSender: (senderId) => this.entryForSender(senderId) !== undefined });
   }
 
   /**

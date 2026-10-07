@@ -398,8 +398,13 @@ function joinName(source: string, defaultName: string): string {
   return separator === -1 ? defaultName : `${source.slice(0, separator + 1)}${defaultName}`;
 }
 
-function assertDocumentSender(
-  target: DocumentViewIpcTarget,
+/**
+ * The one guarantee every document channel shares: it answers only a
+ * webContents the view owner created. Exported so the AI channels are held to
+ * it too rather than growing a second copy.
+ */
+export function assertDocumentSender(
+  target: Pick<DocumentViewIpcTarget, "hasSender">,
   event: IpcMainInvokeEvent,
   channel: string,
 ): void {

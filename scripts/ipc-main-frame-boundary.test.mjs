@@ -23,6 +23,11 @@ const rawIpcAllowlist = new Map([
       "main frame and mainFrameHandler cannot gate it. The module refuses any sender that is " +
       "not a document view the owner created, which is the same guarantee for this surface.",
   ],
+  [
+    `${electronDir}/ipc/document-ai-ipc.ts`,
+    "the document editor's AI panel for the same reason: its channels share the document " +
+      "view's sender check, so only a view the owner created can reach them.",
+  ],
 ]);
 
 // Channels whose handlers must reject anything other than the owned window's main frame.

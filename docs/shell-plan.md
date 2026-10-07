@@ -118,7 +118,12 @@
 
 ### 3.4 文档引擎（`vendor/genoffice/`）
 
-- 15 个包，全部是 pnpm workspace 成员（`pnpm-workspace.yaml` → `vendor/genoffice/*`），**源码入库、非符号链接**。
+- 14 个包，全部是 pnpm workspace 成员（`pnpm-workspace.yaml` → `vendor/genoffice/*`），**源码入库、非符号链接**。
+  逐包全文件 md5 对上游 `feat-workspace/packages/*`：13 个**逐字节相同**；`workspace-harness` 仅 2 个文件不同
+  （`package.json` + `src/agent/host.ts`，为适配本仓 SDK 1.0.0 的 `estimateTokens`，是故意的）。
+  **其中 4 个壳里没有任何代码 import**：`file-parse`、`html2docx`、`xlsx-gateway`、`workspace-harness`。
+  上游另有 6 个包**没有拷进来**：`ai-search`、`cli`、`file-store`、`pdf2docx`、`pipelines`、`pptx-ops`
+  （上游是一套应用而不只是一个库：`apps/` 下还有 `docs`/`sheets`/`slides`/`pdf`/`html`/`markdown`/`shell`/`workspace-shell`）。
 - `@genoffice/docx-engine` 关键 API：
   - 读：`parseDocx(bytes, {expandAltChunks})` → `ParsedDoc`（`blocks` / `comments` / `styles` / `numbering` / header-footer / footnotes…）
   - 写：`saveDocx(parsed, finalBlocks: SaveBlock[], options)`；`SaveOptions.comments?: CommentInfo[]`（整表重写）
@@ -256,6 +261,41 @@
 2. **不动持久化契约**（上面第二类），并记在这里，免得以后有人「顺手统一命名」把用户数据搞丢。
 3. Homebrew tap、上游 release workflow 这些**我们不发布的**基础设施，按 `docs/目标与计划.md` §11 处理（不是我们的，删）。
 
+**F12 — 编辑器自带的 AI 面板，接到「壳自己的 provider 配置」上。**
+
+背景：`packages/document-editor` 的 `ai/AiPanel.tsx`（`AgentLoop` + 自己的 `AGENT_TOOLS`）本来就是完整的，
+`@genoffice/agent-core` / `ai-provider` 也都在 bundle 里，但宿主桥把 `aiChat` / `aiStream` / `onAiStream` /
+`getAiSettings` 一律回成「不支持」，所以面板是死的（§七）。
+
+决定：**不再造第二套 provider 存储**。上游 genoffice 的编辑器自己从不写设置——`setAiSettings` 在渲染层没有任何调用点，
+设置 UI 在上游的 launcher 应用里；而壳已经有唯一一处模型配置：`$PI_CODING_AGENT_DIR/models.json`
+加 `settings.json` 的 `defaultProvider` / `defaultModel`。面板就读它，于是「一个应用只有一处配置模型的地方」。
+
+三个要点：
+
+1. **按协议选 id，不按厂商名选。** `AiSettings.provider` 决定 ai-provider 走哪条 wire protocol，
+   而 pi 在 `models.json` 里用 `api` 字段记录协议。所以 `anthropic-messages` 的 pi provider 映射成
+   ai-provider 的 `anthropic`（它的 adapter 认 `baseUrl` 覆盖），**不能**映射成 `qwen`——
+   本机 pi 的 qwen 指着 DashScope 的 _Anthropic_ 端点，不是它的 OpenAI 兼容端点；映射错就是「请求说错了方言」。
+2. **`aiChat` 不实现**（渲染层从不调用它，只走 stream），`setAiSettings` 保持 no-op（渲染层也从不调用）。
+   `apps/desktop/AGENTS.md` 要的是「只加渲染层真正需要的窄 IPC」。
+3. 面板的**云工具**（web/image search、生图、媒体分析、附件）仍然不可用：它们要外部服务与 gsk 登录，与本仓无关。
+
+**新增 workspace `packages/document-ai`（`@bid-workshop/document-ai`）**，理由同 F3：
+vendored genoffice 的源码是 bundler 式的无扩展名 import，NodeNext 读不了，所以由它在 bundler 模式下 typecheck
+并把 vendored API 包起来。两条硬约束：
+
+- 它的**公开 `.d.ts` 里不出现任何 `@genoffice/*` 名字**（照 `document-service` 的先例）。
+  一旦出现，主进程的 program 就会被拖进 vendored 源码，`pnpm typecheck` 立刻红。
+  做法是把两个契约（settings、chunk）**镜像**成自己的 interface，并用
+  `type X = AiSettings extends Mirror ? true : never` 在构建期钉住镜像——上游改字段，本包先编译失败。
+- 包内的相对 import 必须带 `.js` 后缀，否则生成的 `.d.ts`/`.js` 都用不了。
+  （这条踩过坑：无扩展名时 `tsc` 不报错、而是**静默把整个导入退化成 any**，同时把主进程的 typecheck 拖到 15 分钟。）
+
+顺带：`apps/desktop` 的 `build:deps` 补上了 `@bid-workshop/document-service`（本来就漏了）与
+新的 `@bid-workshop/document-ai`；此前干净检出上单跑 `pnpm --filter @bid-workshop/desktop run build`
+会因为没有 shared 包的 dist 而失败（CI 的 `test:e2e:ci:mac` 正是这么跑的）。
+
 ---
 
 ## 五、工作项
@@ -339,13 +379,13 @@ spec 文件名建议 `apps/desktop/tests/core/document-edit-save.spec.ts`，
 **E. 偏好与杂项**：`getAutoSaveDefault` / `onAutoSaveDefaultChanged`、`getAiPanelPrefs` / `setAiPanelPrefs` / `onAiPanelPrefsChanged`、
 `respellKick` / `spellDiag`、`fontMetrics`、`aiChat` / `setAiSettings`（后两个声明的契约里有、渲染层不调，可保留桩）。
 
-**F. 编辑器自带 AI 面板（Tier 3，最后做）**：
-`aiStream` / `onAiStream` / `aiStreamCancel`、`webSearch` / `imageSearch` / `analyzeMedia` / `aiGenerateImage` / `fetchImage`、
-`pickAttachments` / `addAttachmentPaths` / `addPastedImage` / `readAttachment` / `readAttachmentImage` / `getPathForFile`、
-`window.projectApi`（聊天记录）。
-→ `aiStream` 可以映射到壳的 provider（`@genoffice/ai-provider` 已在 vendor 里，壳也有 provider 配置）；
-搜索/生图这类外部服务没有就**明确返回不支持**，并在 §七 记录理由。
-`projectApi` 没暴露是渲染层的已知空缺（它自己是可选读的）——**记录**，不阻塞。
+**F. 编辑器自带 AI 面板**：**已做**（设计见 F12，验证见 §8.8）。
+`aiStream` / `onAiStream` / `aiStreamCancel` / `getAiSettings` 走主进程的 ai-provider，
+provider 来自 pi 自己的 `models.json`（`@genoffice/ai-provider` 在 vendor 里，壳本来就有唯一的模型配置）；
+`webSearch` / `imageSearch` / `analyzeMedia` / `aiGenerateImage` / `fetchImage` /
+`pickAttachments` / `addAttachmentPaths` / `addPastedImage` / `readAttachment` / `readAttachmentImage` / `getPathForFile`
+这些外部服务类成员**明确返回不支持**，理由记在 §七。
+`window.projectApi`（聊天记录）仍未暴露——**记录**，不阻塞。
 
 **完成**：D14；A/C/D 三组有 core lane 覆盖。
 
@@ -417,26 +457,29 @@ S3 的 A 组（挂载必需）**要先于** S4，因为 `getAiSettings` 这类�
 **规则**：渲染层调用一个不支持的成员时，必须拿到一个**形状正确、且不会被误当成成功或「用户取消」**的返回。
 凡契约里有 `error` 字段的，一律填上说明（`unsupported()`）；只有 `null`（= 取消）或 `{ok:false}`（无说明字段）这两种形状可用的，在下面注明。
 
-| 成员                                                                                                                                               | 返回什么                                               | 为什么                                                                                                                               |
-| -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `print`                                                                                                                                            | `{ok:false, error}`                                    | 宿主没有系统打印集成。给 error，而不是让打印对话框看起来「被取消」                                                                   |
-| `printPdfBuffer` / `saveMergedPdf` / `takeExportPdf` / `writeExportImage` / `saveImageAs`                                                          | `{ok:false, error}`                                    | 这是**分组合并 / 导出图片**那条路。**单份 PDF 与 HTML 已经能导**；合并多份 PDF 需要本仓没引入的 PDF 库                               |
-| `createDocument`                                                                                                                                   | `{ok:false, error}`                                    | 编辑器自带的「AI 造一个文档并开新标签」；本宿主没有多标签文档模型                                                                    |
-| `pickImage` / `pickExportImagesTarget`                                                                                                             | `null`                                                 | 契约里 `null` 就是「用户取消」，这两个没有 error 字段可用（原生选图 / 选目录）                                                       |
-| `setDocPassword` / `docPasswordIntentRevision` / `discardDocPasswordIntents`                                                                       | `{ok:false}` / `0`                                     | 加密文档的保存密码流程（`openDocxDecrypt` 已经明确回 `reason:"unsupported"`）                                                        |
-| `webSearch` / `imageSearch` / `analyzeMedia` / `aiGenerateImage` / `fetchImage`                                                                    | 各自的 `unavailable` 形状                              | 依赖外部检索 / 生图服务，本仓不含                                                                                                    |
-| `zoteroCommand` / `onZoteroRequest` / `respondToZotero`                                                                                            | `{ok:false, errorCode:"unsupported-command"}` / 空订阅 | Zotero 是外部文献管理器集成，与「文档编辑能力」无关                                                                                  |
-| `aiGskStatus` / `aiGskLogin`                                                                                                                       | `{loggedIn:false}` / noop                              | 第三方账号体系                                                                                                                       |
-| `aiChat` / `aiStream` / `aiStreamCancel` / `onAiStream`                                                                                            | `{ok:false, error}` / noop                             | 编辑器**自带**的 AI 面板。壳自己的 AI 是 Pi agent（会话在主界面），两套不互通                                                        |
-| `pickAttachments` / `addAttachmentPaths` / `addPastedImage` / `readAttachment` / `readAttachmentImage` / `getPathForFile` / `copyImageToClipboard` | 空结果                                                 | 上面那个 AI 面板的附件能力                                                                                                           |
-| `openNewTab` / `listDocsTabs` / `focusDocsTab`                                                                                                     | noop / `[]`                                            | 编辑器自带的多标签；本宿主一窗一份文档（`startNewDocument` 是原地清空）                                                              |
-| `getAiSettings` / `setAiSettings`                                                                                                                  | 一个空 `AiSettings`                                    | 同上：壳的 provider 配置属于 Pi，不喂给编辑器自带的 AI 面板。**注意这是个「假」形状**（里面没有真实 provider），而渲染层挂载时会读它 |
-| `fontMetrics`                                                                                                                                      | `null`                                                 | 渲染层不调用（契约里有）                                                                                                             |
-| `convertAltChunkHtml`                                                                                                                              | `null`                                                 | 契约就是「转换失败时返回 null」                                                                                                      |
-| `consumeAiDocContent` / `consumeHeadlessExport`                                                                                                    | `null`                                                 | **这两个是正确答案，不是桩**：前者=「没有 AI 排队内容」，后者=「不在无头导出模式」                                                   |
-| `consumeNewBlankDoc`                                                                                                                               | `false`                                                | **正确答案**：本宿主从不让视图以空白文档启动（New Document 是原地清空）                                                              |
-| `onChromePressed` / `onTeardown` / `reportViewMenuState` / `onViewImage` / `onRenamedDocx` / `onOpenDocx` / `respellKick` / `spellDiag`            | 空订阅 / noop                                          | 订阅型：不发事件就是合法状态                                                                                                         |
-| `getLanguage` / `getTheme`                                                                                                                         | `"zh"` / `"system"`                                    | 壳的语言 / 主题设置还没接进文档视图（文档视图自己的界面语言固定 zh）                                                                 |
+| 成员                                                                                                                                               | 返回什么                                               | 为什么                                                                                                    |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `print`                                                                                                                                            | `{ok:false, error}`                                    | 宿主没有系统打印集成。给 error，而不是让打印对话框看起来「被取消」                                        |
+| `printPdfBuffer` / `saveMergedPdf` / `takeExportPdf` / `writeExportImage` / `saveImageAs`                                                          | `{ok:false, error}`                                    | 这是**分组合并 / 导出图片**那条路。**单份 PDF 与 HTML 已经能导**；合并多份 PDF 需要本仓没引入的 PDF 库    |
+| `createDocument`                                                                                                                                   | `{ok:false, error}`                                    | 编辑器自带的「AI 造一个文档并开新标签」；本宿主没有多标签文档模型                                         |
+| `pickImage` / `pickExportImagesTarget`                                                                                                             | `null`                                                 | 契约里 `null` 就是「用户取消」，这两个没有 error 字段可用（原生选图 / 选目录）                            |
+| `setDocPassword` / `docPasswordIntentRevision` / `discardDocPasswordIntents`                                                                       | `{ok:false}` / `0`                                     | 加密文档的保存密码流程（`openDocxDecrypt` 已经明确回 `reason:"unsupported"`）                             |
+| `webSearch` / `imageSearch` / `analyzeMedia` / `aiGenerateImage` / `fetchImage`                                                                    | 各自的 `unavailable` 形状                              | 依赖外部检索 / 生图服务，本仓不含                                                                         |
+| `zoteroCommand` / `onZoteroRequest` / `respondToZotero`                                                                                            | `{ok:false, errorCode:"unsupported-command"}` / 空订阅 | Zotero 是外部文献管理器集成，与「文档编辑能力」无关                                                       |
+| `aiGskStatus` / `aiGskLogin`                                                                                                                       | `{loggedIn:false}` / noop                              | 第三方账号体系                                                                                            |
+| `aiChat`                                                                                                                                           | `{ok:false, error}`                                    | 编辑器自带的一次性聊天。渲染层只走 `aiStream`、从不调用它，所以不为它开 IPC（面板本体**已接通**，见 F12） |
+| `pickAttachments` / `addAttachmentPaths` / `addPastedImage` / `readAttachment` / `readAttachmentImage` / `getPathForFile` / `copyImageToClipboard` | 空结果                                                 | 上面那个 AI 面板的附件能力                                                                                |
+| `openNewTab` / `listDocsTabs` / `focusDocsTab`                                                                                                     | noop / `[]`                                            | 编辑器自带的多标签；本宿主一窗一份文档（`startNewDocument` 是原地清空）                                   |
+| `setAiSettings`                                                                                                                                    | noop                                                   | 渲染层从不写设置——上游的设置 UI 在 launcher 应用里。**不是桩**：根本没有调用点需要满足（见 F12）          |
+| `fontMetrics`                                                                                                                                      | `null`                                                 | 渲染层不调用（契约里有）                                                                                  |
+| `convertAltChunkHtml`                                                                                                                              | `null`                                                 | 契约就是「转换失败时返回 null」                                                                           |
+| `consumeAiDocContent` / `consumeHeadlessExport`                                                                                                    | `null`                                                 | **这两个是正确答案，不是桩**：前者=「没有 AI 排队内容」，后者=「不在无头导出模式」                        |
+| `consumeNewBlankDoc`                                                                                                                               | `false`                                                | **正确答案**：本宿主从不让视图以空白文档启动（New Document 是原地清空）                                   |
+| `onChromePressed` / `onTeardown` / `reportViewMenuState` / `onViewImage` / `onRenamedDocx` / `onOpenDocx` / `respellKick` / `spellDiag`            | 空订阅 / noop                                          | 订阅型：不发事件就是合法状态                                                                              |
+| `getLanguage` / `getTheme`                                                                                                                         | `"zh"` / `"system"`                                    | 壳的语言 / 主题设置还没接进文档视图（文档视图自己的界面语言固定 zh）                                      |
+
+**注**：`aiStream` / `aiStreamCancel` / `onAiStream` / `getAiSettings` 原先也在这张表里，现在**已经是真的**
+（面板走主进程的 ai-provider，provider 来自 pi 自己的 `models.json`），所以从表里拿掉了——见 F12 与 §8.8。
 
 要做的话：让 `Entry` 记住它属于哪个窗口，然后复用现有的 `show()`。
 
@@ -621,6 +664,45 @@ try {
    改对断言，顺带得到了「文档工具确实注册进真实应用界面」的证据。
 2. `document-revisions` 的接受/拒绝一开始是坏的。**量出来**才看清：保存后编辑器会重新解析并整篇回填，
    而修订记录器把那次回填当成了对每个 run 的编辑（147 条幻影）。修法是把回填期间记录临时关掉（§8.6）。
+
+### 8.8 编辑器 AI 面板接通（F12 的落地）
+
+**注意：这不是 D1–D14 的一部分**——那张表早就全绿了。这是用户在这一轮追加的要求：
+「壳把引入的 office 能力用起来」。§七 里那些「不支持」的成员，这一轮动的是 AI 那一组。
+
+改了什么：
+
+| 位置                                                             | 是什么                                                                         |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `packages/document-ai/`（**新 workspace**）                      | 从 pi 的 `models.json` + `settings.json` 推导面板要的 settings；跑一次流式回合 |
+| `apps/desktop/electron/ipc/document-ai-ipc.ts`（新）             | 三个 channel，共用文档视图的 sender 校验                                       |
+| `apps/desktop/electron/application/agent-dir.ts`（新，抽出来的） | `resolveAgentDir()`：app-store 与 AI 桥共用同一份解析                          |
+| `document-channels.ts` / `document-view.ts`                      | 三个 invoke channel + 一个 push channel；在 `installIpc` 里注册                |
+| `document-preload.ts`                                            | `getAiSettings` / `aiStream` / `aiStreamCancel` / `onAiStream` 换成真实实现    |
+| `apps/desktop/tests/core/document-ai.spec.ts`（新）              | 本机 stub 的 OpenAI 兼容端点 + **真实的 AI 面板 UI 驱动**                      |
+
+验证（都在最终树上跑）：
+
+| 检查                                                                        | 结果                                               |
+| --------------------------------------------------------------------------- | -------------------------------------------------- |
+| `pnpm check`（format + lint + architecture + 23 个 workspace 的 typecheck） | ✅ exit 0                                          |
+| `pnpm test:guards`                                                          | ✅ **108 / 108**                                   |
+| 把 `packages/*/dist` 全删掉再单跑 `pnpm --dir apps/desktop run build`       | ✅ exit 0（`build:deps` 补全之后；补之前解析不到） |
+| 文档面 9 条 core spec（`document-*.spec.ts`，含新增的 `document-ai`）       | ✅ **9 passed**（28.5s；干净构建上复跑 29.1s）     |
+| composer 面 10 条（长跑里挂掉的那批）                                       | ✅ **10 passed**（42.8s）                          |
+
+`document-ai` 这条 spec 断言的不是「桥能调通」，而是**可见行为**：在文档视图的 AI 面板里真的发一条消息，
+stub 端点必须收到 `model: stub-model` + `Authorization: Bearer stub-provider-key`（= 壳确实从 agent dir 解析出了
+provider 并签了名），并且回复必须出现在转录里。全程离线，不碰任何真实 provider。
+
+**已知未完成：完整 core lane 没跑完，所以「全绿」这句话本轮不成立。**
+本机现在（load 5–8、swap 用掉一半、`/var/folders` 下积了 ~7900 个历史测试临时目录）跑 macOS **串行**
+core lane（1 worker × 300+ spec）会随运行时间出现**单条 spec 卡住 13–17 分钟**：
+两次长跑各留了 4–5 个失败件，两次**失败的是不同的 spec**，而且都发生在文档/AI 代码被碰到的**之前**
+（第二次跑里 15/17/18/19 号就挂了，我的 spec 是 46 号）。逐个与分组复跑全部通过——上面那两行就是证据：
+文档面 9/9、composer 面 10/10，历史上失败过的 6 条也都在其中。
+所以判断是**长时间串行运行下的环境退化**，不是这次改动的回归；但这只是判断，
+**要拿到完整的 core lane 数字，需要在负载正常的机器上重跑一次**。
 
 ## 九、不许做的事
 

@@ -1,4 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type {
+  DocumentAiChunk,
+  DocumentAiSettings,
+  DocumentAiTurnRequest,
+} from "@bid-workshop/document-ai";
 import { DOCUMENT_IPC, DOCUMENT_PUSH, DOCUMENT_REPORT } from "./documents/document-channels";
 
 /**
@@ -7,8 +12,9 @@ import { DOCUMENT_IPC, DOCUMENT_PUSH, DOCUMENT_REPORT } from "./documents/docume
  * Backed for real: the boot handoff (open, blank document), the whole save family
  * (save in place, Save As, first save, save to an explicit path, recovery copy),
  * the recent-documents list, comments and revisions through the document itself,
- * export to HTML and PDF, and the menu-command and close-check channels the
- * native File menu drives.
+ * export to HTML and PDF, the menu-command and close-check channels the native
+ * File menu drives, and the AI panel (settings read from pi's own provider
+ * configuration, model turns streamed from the main process).
  *
  * What is not backed says so rather than looking like a cancelled dialog: every
  * member whose contract carries an `error` field returns one. The rest are
@@ -82,7 +88,10 @@ const desktop = {
   getRecentFiles: () => ipcRenderer.invoke(DOCUMENT_IPC.recentFiles),
   pickImage: () => Promise.resolve(null),
   fontMetrics: () => Promise.resolve(null),
-  getAiSettings: () => Promise.resolve({ provider: "anthropic", providers: {} }),
+  // The panel reads the shell's provider configuration and never writes one back
+  // (there is no provider form in the editor), so `setAiSettings` is the no-op it
+  // has always been — it is not a stub standing in for a missing host.
+  getAiSettings: (): Promise<DocumentAiSettings> => ipcRenderer.invoke(DOCUMENT_IPC.aiGetSettings),
   setAiSettings: noop,
   print: () => Promise.resolve(unsupported("Printing")),
   exportPdf: (
@@ -107,9 +116,11 @@ const desktop = {
   writeExportImage: () => Promise.resolve(unsupported("Exporting images")),
   saveImageAs: () => Promise.resolve(unsupported("Saving a picture")),
   onViewImage: unsubscribe,
-  aiChat: () => Promise.resolve(unsupported("The editor's own chat")),
-  aiStream: noop,
-  aiStreamCancel: noop,
+  // The renderer drives the panel through the stream alone; the one-shot `aiChat`
+  // member is never called, so it stays a refusal rather than unused IPC.
+  aiChat: () => Promise.resolve(unsupported("The editor's one-shot chat")),
+  aiStream: (request: DocumentAiTurnRequest) => ipcRenderer.invoke(DOCUMENT_IPC.aiStream, request),
+  aiStreamCancel: (requestId: string) => ipcRenderer.invoke(DOCUMENT_IPC.aiStreamCancel, requestId),
   aiGskStatus: () => Promise.resolve({ loggedIn: false }),
   aiGskLogin: noop,
   webSearch: () => Promise.resolve({ results: [], method: "error", error: "unavailable" }),
@@ -127,7 +138,8 @@ const desktop = {
   openNewTab: noop,
   listDocsTabs: () => Promise.resolve([]),
   focusDocsTab: noop,
-  onAiStream: unsubscribe,
+  onAiStream: (handler: (chunk: DocumentAiChunk) => void) =>
+    subscribeArgs<[DocumentAiChunk]>(DOCUMENT_PUSH.aiStreamChunk, handler),
   onMenuCommand: (handler: (command: string, payload?: string) => void) =>
     subscribeArgs<[string, string?]>(DOCUMENT_PUSH.menuCommand, handler),
   onCloseCheck: (handler: () => void) => subscribeArgs<[]>(DOCUMENT_PUSH.closeCheck, handler),
