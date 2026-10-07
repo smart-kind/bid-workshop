@@ -51,8 +51,8 @@ const desktop = {
   onZoteroRequest: unsubscribe,
   respondToZotero: noop,
   // A cancelled file picker is the only "no" these two can report (see §七).
-  openDocx: () => Promise.resolve(null),
-  openDocxPath: () => Promise.resolve(null),
+  openDocx: () => ipcRenderer.invoke(DOCUMENT_IPC.openDocument, null),
+  openDocxPath: (path: string) => ipcRenderer.invoke(DOCUMENT_IPC.openDocument, path),
   openDocxDecrypt: () => Promise.resolve({ ok: false, reason: "unsupported" }),
   convertAltChunkHtml: () => Promise.resolve(null),
   setDocPassword: () => Promise.resolve({ ok: false }),

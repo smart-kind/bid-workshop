@@ -101,6 +101,8 @@ export class DocumentViewOwner {
         const entry = this.entryForSender(senderId);
         if (entry) entry.currentPath = absolutePath;
       },
+      openDocumentForSender: (senderId, absolutePath) =>
+        this.openDocumentForSender(senderId, absolutePath),
     });
   }
 
@@ -128,6 +130,33 @@ export class DocumentViewOwner {
     if (!(await this.leavesCleanly(entry, null))) return false;
     focused.send(DOCUMENT_PUSH.menuCommand, "new");
     return true;
+  }
+
+  /**
+   * File > Open: gives the document already open in this view its chance to save,
+   * then mints the handoff the renderer loads the new one from. Returns null when
+   * the view is unknown or the open document could not be saved — the same
+   * one-shot URL the boot handoff uses, so the renderer fetches it the same way.
+   */
+  async openDocumentForSender(
+    senderId: number,
+    absolutePath: string,
+  ): Promise<PendingDocument | null> {
+    const entry = this.entryForSender(senderId);
+    if (!entry) return null;
+    if (!(await this.leavesCleanly(entry, absolutePath))) return null;
+    if (entry.pending) this.handoffs.delete(entry.pending.token);
+    const token = randomUUID();
+    this.handoffs.set(token, { absolutePath });
+    const name = path.basename(absolutePath);
+    entry.pending = { path: absolutePath, name, token };
+    entry.currentPath = absolutePath;
+    return {
+      path: absolutePath,
+      name,
+      dataUrl: `${DOCUMENT_VIEW_SCHEME}://app/_handoff/${token}`,
+      hash: await this.hashOf(absolutePath),
+    };
   }
 
   /**

@@ -46,6 +46,15 @@ async function docxIn(directory: string): Promise<string[]> {
   }
 }
 
+/** The document's text, or "" while it is not readable yet. */
+async function documentText(filePath: string): Promise<string> {
+  try {
+    return await readDocumentText(new Uint8Array(await readFile(filePath)));
+  } catch {
+    return "";
+  }
+}
+
 test("New Document blanks the open document, and saving writes a new file", async () => {
   test.setTimeout(180_000);
   const userDataDir = await makeUserDataDir();
@@ -114,6 +123,28 @@ test("New Document blanks the open document, and saving writes a new file", asyn
     );
     expect(source).toContain(REAL_HEADING);
     expect(source).not.toContain(PROBE);
+
+    // --- and it opens again: File > Open on the file the shell just wrote ---
+    await harness.electronApp.evaluate(
+      ({ dialog }, wanted) => {
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [wanted] });
+      },
+      join(documentsDir, first),
+    );
+    await pressDocumentMenuCommand(harness.electronApp, "open");
+    await expect(body).toContainText(PROBE, { timeout: 30_000 });
+
+    // Typing and saving now goes back into that file rather than making another,
+    // which is what makes this a reopen rather than a second New Document.
+    await documentView.locator(".doc-page").click();
+    await documentView.keyboard.press("End");
+    await documentView.keyboard.type(" REOPENED");
+    await pressDocumentMenuCommand(harness.electronApp, "save");
+
+    await expect
+      .poll(async () => documentText(join(documentsDir, first)), { timeout: 60_000 })
+      .toContain("REOPENED");
+    expect(await docxIn(documentsDir)).toEqual([first]);
   } finally {
     await harness.close();
   }

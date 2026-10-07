@@ -13,6 +13,7 @@ export const DOCUMENT_IPC = {
   recentFiles: "bid-docs:recent-files",
   exportHtml: "bid-docs:export-html",
   exportPdf: "bid-docs:export-pdf",
+  openDocument: "bid-docs:open-document",
 } as const;
 
 /** Pushed main → document view. Not invoke channels, so they carry no reply. */

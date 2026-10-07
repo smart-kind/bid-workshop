@@ -33,6 +33,8 @@ export interface DocumentViewIpcTarget {
   documentPathForSender(senderId: number): string | null;
   /** the view's document now lives at this path (first save, Save As, New) */
   noteSavedPath(senderId: number, absolutePath: string): void;
+  /** File > Open: hands this view a document it asked for, or null when it may not have it */
+  openDocumentForSender(senderId: number, absolutePath: string): Promise<PendingDocument | null>;
 }
 
 /** The part of the target the leave guard needs; the owner passes itself. */
@@ -208,6 +210,25 @@ export function registerDocumentViewIpc(target: DocumentViewIpcTarget): void {
     },
   );
 
+  ipcMain.handle(DOCUMENT_IPC.openDocument, async (event, rawPath: unknown) => {
+    assertDocumentSender(target, event, DOCUMENT_IPC.openDocument);
+    const chosen =
+      typeof rawPath === "string" && rawPath !== "" ? rawPath : await askOpenPath(event.sender);
+    if (!chosen) return null;
+    try {
+      if (!(await fileExists(chosen))) throw new Error(`${chosen} does not exist.`);
+      // The guard inside runs first: the document already open gets its chance to
+      // save before the renderer replaces it with the one asked for.
+      const handed = await target.openDocumentForSender(event.sender.id, chosen);
+      if (!handed)
+        console.warn(`[documents] kept the open document: ${chosen} was not handed over`);
+      return handed;
+    } catch (error) {
+      console.warn("[documents] open failed", messageOf(error));
+      return null;
+    }
+  });
+
   // The leave guard's answers. There is no reply to send for an unknown sender,
   // so those are dropped rather than thrown.
   ipcMain.on(DOCUMENT_REPORT.closeCheck, (event, raw: unknown) => {
@@ -335,6 +356,19 @@ function settleLeave(
 function dirtyFromReport(raw: unknown): boolean {
   if (typeof raw !== "object" || raw === null || !("dirty" in raw)) return true;
   return (raw as { dirty?: unknown }).dirty === true;
+}
+
+/** Asks for a document to open; null means the user cancelled. */
+async function askOpenPath(contents: WebContents): Promise<string | null> {
+  const window = BrowserWindow.fromWebContents(contents) ?? undefined;
+  const options: Electron.OpenDialogOptions = {
+    properties: ["openFile"],
+    filters: [{ name: "Word documents", extensions: ["docx"] }],
+  };
+  const picked = window
+    ? await dialog.showOpenDialog(window, options)
+    : await dialog.showOpenDialog(options);
+  return picked.canceled ? null : (picked.filePaths[0] ?? null);
 }
 
 /** Asks where to write an export; null means the user cancelled. */
