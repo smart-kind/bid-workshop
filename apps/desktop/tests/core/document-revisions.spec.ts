@@ -103,12 +103,23 @@ test("a tracked change is recorded in the file as a revision", async () => {
     expect(saved.match(/<w:del\b/g) ?? []).toHaveLength(0);
     expect(saved).toContain(MARKER);
 
-    // The other half of tracked changes — accepting or rejecting them — is NOT
-    // covered here, and not because the host is missing anything: with this
-    // document open the editor reports "147 revisions" for a file that has none,
-    // and clicking 接受所有修订 leaves that count at 147, so the saved file keeps
-    // its <w:ins>. That lives in the renderer's revision detection; see
-    // docs/shell-plan.md §8.6.
+    // --- accepting the revision rewrites the file: D9's other half ---
+    await documentView.locator(".ribbon-tab", { hasText: "审阅" }).first().click();
+    const acceptSplit = documentView.locator(".rb-split-wrap", { hasText: "接受" }).first();
+    const tip = (await acceptSplit.locator("button.rb-big").first().getAttribute("data-tip")) ?? "";
+    // One typed word is one revision. Hundreds would mean the save's own reload of
+    // the file was recorded as an edit to the whole document (§8.6).
+    expect(Number(tip.replace(/[^\d]/g, ""))).toBeLessThan(10);
+
+    await acceptSplit.locator("button.rb-big").first().click();
+    await acceptSplit.locator(".layout-menu button", { hasText: "接受所有修订" }).click();
+    await pressDocumentMenuCommand(harness.electronApp, "save");
+
+    await expect
+      .poll(async () => trackedInsertions(await documentXml(documentPath)), { timeout: 30_000 })
+      .toBe(0);
+    // Accepted, not dropped: the text the insertion carried is still there.
+    expect(await documentXml(documentPath)).toContain(MARKER);
   } finally {
     await harness.close();
   }
