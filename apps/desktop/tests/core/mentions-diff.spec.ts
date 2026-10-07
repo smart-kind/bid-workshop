@@ -40,11 +40,13 @@ test("shows workspace file mentions from the composer and inserts the selected f
       "Extensions",
       "Files",
     ]);
-    // pi-gui's two tools, pi's three add-ons (MCP, code mode, tool search) and two files.
-    await expect(mentionMenu.locator(".mention-menu__item")).toHaveCount(7);
+    // pi-gui's three tools (thread orchestration, scheduled tasks, documents),
+    // pi's three add-ons (MCP, code mode, tool search) and two files.
+    await expect(mentionMenu.locator(".mention-menu__item")).toHaveCount(8);
     await expect(mentionMenu).toContainText("MCP servers");
     await expect(mentionMenu).toContainText("Thread orchestration");
     await expect(mentionMenu).toContainText("Scheduled tasks");
+    await expect(mentionMenu).toContainText("Documents");
 
     await composer.pressSequentially("README");
     await expect(mentionMenu.locator(".mention-menu__item")).toHaveCount(1);
