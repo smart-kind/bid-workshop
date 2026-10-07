@@ -91,7 +91,17 @@ test("a tracked change is recorded in the file as a revision", async () => {
     await expect
       .poll(async () => trackedInsertions(await documentXml(documentPath)), { timeout: 30_000 })
       .toBeGreaterThan(0);
-    expect(await documentXml(documentPath)).toContain(MARKER);
+    // Only this change, and only of this kind. The editor's own bookkeeping
+    // reports hundreds of revisions for this document (see docs/shell-plan.md
+    // §8.6), and none of them may reach the file: a leak would show up here as
+    // rPr/pPr changes or as insertions scattered across the whole body.
+    const saved = await documentXml(documentPath);
+    expect(trackedInsertions(saved)).toBeGreaterThan(0);
+    expect(trackedInsertions(saved)).toBeLessThan(10);
+    expect(saved.match(/<w:rPrChange\b/g) ?? []).toHaveLength(0);
+    expect(saved.match(/<w:pPrChange\b/g) ?? []).toHaveLength(0);
+    expect(saved.match(/<w:del\b/g) ?? []).toHaveLength(0);
+    expect(saved).toContain(MARKER);
 
     // The other half of tracked changes — accepting or rejecting them — is NOT
     // covered here, and not because the host is missing anything: with this
