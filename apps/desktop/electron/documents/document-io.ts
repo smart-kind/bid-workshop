@@ -79,7 +79,9 @@ export async function fileExists(candidate: string): Promise<boolean> {
 
 /** A free path in the user's documents folder for a document that has never been saved. */
 export async function freeDocumentPath(defaultName: string): Promise<string> {
-  const directory = app.getPath("documents");
+  // Tests redirect this the same way they redirect user data, so a run never
+  // lands a document in the real folder.
+  const directory = process.env.PI_APP_DOCUMENTS_DIR?.trim() || app.getPath("documents");
   const stem = safeStem(defaultName);
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const candidate = path.join(

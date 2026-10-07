@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
-import { protocol, WebContentsView, type BrowserWindow } from "electron";
-import { DOCUMENT_VIEW_SCHEME } from "./document-channels";
+import { protocol, webContents, WebContentsView, type BrowserWindow } from "electron";
+import { DOCUMENT_PUSH, DOCUMENT_VIEW_SCHEME } from "./document-channels";
 import {
   prepareDocumentForLeave,
   registerDocumentViewIpc,
@@ -114,6 +114,20 @@ export class DocumentViewOwner {
       { hasSender: (senderId) => this.entryForSender(senderId) !== undefined },
       command,
     );
+  }
+
+  /**
+   * Starts a blank document in the view the user is looking at, after giving the
+   * document already open there its chance to save. Returns false when there is
+   * no document view to start one in, or when that document could not be saved.
+   */
+  async startNewDocument(): Promise<boolean> {
+    const focused = webContents.getFocusedWebContents();
+    const entry = focused ? this.entryForSender(focused.id) : undefined;
+    if (!entry || !focused) return false;
+    if (!(await this.leavesCleanly(entry, null))) return false;
+    focused.send(DOCUMENT_PUSH.menuCommand, "new");
+    return true;
   }
 
   /**

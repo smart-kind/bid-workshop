@@ -896,6 +896,17 @@ function installApplicationMenu(): void {
         },
         { type: "separator" },
         {
+          label: "New Document",
+          accelerator: "Command+Alt+N",
+          click: () => {
+            const owner = documentViewOwner;
+            if (!owner) return;
+            owner.startNewDocument().catch((error: unknown) => {
+              console.error("[main] startNewDocument failed", error);
+            });
+          },
+        },
+        {
           label: "Save Document",
           accelerator: "CommandOrControl+S",
           click: () => {

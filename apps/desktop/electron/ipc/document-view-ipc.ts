@@ -60,6 +60,9 @@ export function registerDocumentViewIpc(target: DocumentViewIpcTarget): void {
 
   ipcMain.handle(DOCUMENT_IPC.consumeNewBlank, (event) => {
     assertDocumentSender(target, event, DOCUMENT_IPC.consumeNewBlank);
+    // A view is never booted as a blank document here: New Document turns the view
+    // the user is already looking at blank in place, so a boot always follows
+    // either a handoff or nothing at all. This is the answer, not a stub.
     return false;
   });
 
