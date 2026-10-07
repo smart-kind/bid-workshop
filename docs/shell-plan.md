@@ -412,20 +412,35 @@ S3 的 A 组（挂载必需）**要先于** S4，因为 `getAiSettings` 这类�
 
 ---
 
-## 七、「不支持」，以及为什么（当前）
+## 七、「不支持」的成员，以及为什么（D14）
 
-> 每一条都要求：**渲染层调用它会得到一个形状正确的、不会被误当成功的返回**，而不是静默挂起。
-> 随着工作推进，这张表要么变短，要么写清为什么留。
+**规则**：渲染层调用一个不支持的成员时，必须拿到一个**形状正确、且不会被误当成成功或「用户取消」**的返回。
+凡契约里有 `error` 字段的，一律填上说明（`unsupported()`）；只有 `null`（= 取消）或 `{ok:false}`（无说明字段）这两种形状可用的，在下面注明。
 
-| 成员                                                                                             | 现状 | 打算                                                                    |
-| ------------------------------------------------------------------------------------------------ | ---- | ----------------------------------------------------------------------- |
-| `openDocxDecrypt` / `setDocPassword` / `docPasswordIntentRevision` / `discardDocPasswordIntents` | 桩   | 待 S3 定：引擎有 `protection.ts`；加密文档要么支持，要么返回明确 reason |
-| `webSearch` / `imageSearch` / `analyzeMedia` / `aiGenerateImage`                                 | 桩   | 外部服务不在本仓；**明确返回 `unavailable`**，S3F 时定                  |
-| `zoteroCommand`                                                                                  | 桩   | Zotero 是外部应用集成，与本仓的「文档编辑能力」无关；明确返回不支持     |
-| `aiGskLogin` / `aiGskStatus`                                                                     | 桩   | 第三方账号体系，同上                                                    |
-| `fontMetrics` / `aiChat` / `setAiSettings`                                                       | 桩   | 渲染层不调用（契约里有）；保留桩即可                                    |
+| 成员                                                                                                                                               | 返回什么                                               | 为什么                                                                                                                               |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `print`                                                                                                                                            | `{ok:false, error}`                                    | 宿主没有系统打印集成。给 error，而不是让打印对话框看起来「被取消」                                                                   |
+| `printPdfBuffer` / `saveMergedPdf` / `takeExportPdf` / `writeExportImage` / `saveImageAs`                                                          | `{ok:false, error}`                                    | 这是**分组合并 / 导出图片**那条路。**单份 PDF 与 HTML 已经能导**；合并多份 PDF 需要本仓没引入的 PDF 库                               |
+| `createDocument`                                                                                                                                   | `{ok:false, error}`                                    | 编辑器自带的「AI 造一个文档并开新标签」；本宿主没有多标签文档模型                                                                    |
+| `pickImage` / `pickExportImagesTarget` / `openDocx` / `openDocxPath`                                                                               | `null`                                                 | 契约里 `null` 就是「用户取消」，这四个没有 error 字段可用。后两个是编辑器自己的 File > Open：本宿主的文档是从工作区文件树打开的      |
+| `setDocPassword` / `docPasswordIntentRevision` / `discardDocPasswordIntents`                                                                       | `{ok:false}` / `0`                                     | 加密文档的保存密码流程（`openDocxDecrypt` 已经明确回 `reason:"unsupported"`）                                                        |
+| `webSearch` / `imageSearch` / `analyzeMedia` / `aiGenerateImage` / `fetchImage`                                                                    | 各自的 `unavailable` 形状                              | 依赖外部检索 / 生图服务，本仓不含                                                                                                    |
+| `zoteroCommand` / `onZoteroRequest` / `respondToZotero`                                                                                            | `{ok:false, errorCode:"unsupported-command"}` / 空订阅 | Zotero 是外部文献管理器集成，与「文档编辑能力」无关                                                                                  |
+| `aiGskStatus` / `aiGskLogin`                                                                                                                       | `{loggedIn:false}` / noop                              | 第三方账号体系                                                                                                                       |
+| `aiChat` / `aiStream` / `aiStreamCancel` / `onAiStream`                                                                                            | `{ok:false, error}` / noop                             | 编辑器**自带**的 AI 面板。壳自己的 AI 是 Pi agent（会话在主界面），两套不互通                                                        |
+| `pickAttachments` / `addAttachmentPaths` / `addPastedImage` / `readAttachment` / `readAttachmentImage` / `getPathForFile` / `copyImageToClipboard` | 空结果                                                 | 上面那个 AI 面板的附件能力                                                                                                           |
+| `openNewTab` / `listDocsTabs` / `focusDocsTab`                                                                                                     | noop / `[]`                                            | 编辑器自带的多标签；本宿主一窗一份文档（`startNewDocument` 是原地清空）                                                              |
+| `getAiSettings` / `setAiSettings`                                                                                                                  | 一个空 `AiSettings`                                    | 同上：壳的 provider 配置属于 Pi，不喂给编辑器自带的 AI 面板。**注意这是个「假」形状**（里面没有真实 provider），而渲染层挂载时会读它 |
+| `fontMetrics`                                                                                                                                      | `null`                                                 | 渲染层不调用（契约里有）                                                                                                             |
+| `convertAltChunkHtml`                                                                                                                              | `null`                                                 | 契约就是「转换失败时返回 null」                                                                                                      |
+| `consumeAiDocContent` / `consumeHeadlessExport`                                                                                                    | `null`                                                 | **这两个是正确答案，不是桩**：前者=「没有 AI 排队内容」，后者=「不在无头导出模式」                                                   |
+| `consumeNewBlankDoc`                                                                                                                               | `false`                                                | **正确答案**：本宿主从不让视图以空白文档启动（New Document 是原地清空）                                                              |
+| `onChromePressed` / `onTeardown` / `reportViewMenuState` / `onViewImage` / `onRenamedDocx` / `onOpenDocx` / `respellKick` / `spellDiag`            | 空订阅 / noop                                          | 订阅型：不发事件就是合法状态                                                                                                         |
+| `getLanguage` / `getTheme`                                                                                                                         | `"zh"` / `"system"`                                    | 壳的语言 / 主题设置还没接进文档视图（文档视图自己的界面语言固定 zh）                                                                 |
 
----
+**还差的一件真能力**（不是「不支持」）：`openDocx` / `openDocxPath` —— 让编辑器自己的 File > Open 能打开工作区**之外**的文件，
+比如刚新建、被保存到 `~/Documents` 的那一份（现在保存后只能靠文件树里已有的文件再打开）。
+要做的话：让 `Entry` 记住它属于哪个窗口，然后复用现有的 `show()`。
 
 ## 八、跑出来的事实（每轮更新）
 
@@ -545,9 +560,9 @@ S3 的 A 组（挂载必需）**要先于** S4，因为 `getAiSettings` 这类�
 | D11  | 模型链路：真实 provider 读文档        | ✅                      | `test:live:document-chain`：真实 provider 用 `read_docx` 读 `标书.docx`，答出「投标人基本情况」——这句话只能来自文件本身，猜不出来                                                                                                                                                                                                                                                                                                   |
 | D12  | 模型链路：生成文件                    | ✅                      | 同一个 spec：模型用 `create_docx` 生成 `生成.docx`，磁盘上读回的块逐字等于「Shell 链路验证」+ 探针                                                                                                                                                                                                                                                                                                                                  |
 | D13  | 模型链路：改已存在文档 + 加批注       | ✅                      | 同一个 live spec：模型用 `update_docx` 往 `标书.docx` 插入探针段落，再用 `comment_docx` 加一条批注——两者都能从磁盘上读出来。服务侧是 `addComments` / `readDocumentComments`；单测另外证明「外部可读」（`word/comments.xml` 里有文本与作者、正文里有 `commentRangeStart`）和「第二条批注不会冲掉第一条」                                                                                                                             |
-| D14  | 无遗留桩                              | ⚠️ 一半                 | 保存族已经真实现；渲染层实际调用、但仍为桩的成员见 §七                                                                                                                                                                                                                                                                                                                                                                              |
+| D14  | 无遗留桩                              | ✅                      | `document-preload.ts` 里凡契约带 `error` 字段的成员，不支持时一律返回**明确的 error**（不再静默地看起来像「用户取消」）；没有 error 字段可用的（`null` = 取消 / `{ok:false}` 无说明），逐条在 §七 写明理由；`consumeNewBlankDoc` / `consumeAiDocContent` / `consumeHeadlessExport` 这类改成注明「**这是正确答案，不是桩**」。§七 现在是完整清单，末尾另记了一件真能力缺口：`openDocx`（编辑器 File > Open 打开工作区外的文件）      |
 
-**一句话**：**D1–D8、D10–D13 完成；只剩 D9 一半（接受/拒绝修订，卡在 §8.6 的渲染层缺陷）与 D14（打印 / 编辑器自带 AI 面板 / Zotero 等仍是桩——渲染层会调用它们，但都不在 D1–D13 的验收里）。**
+**一句话**：**D1–D8、D10–D14 完成（14 条里 13 条）；只剩 D9 一半——「接受 / 拒绝修订」卡在 §8.6 那个渲染层的修订检测缺陷。**
 
 **离开文档时的保存**：换文件 / 换标签会让文档视图 `reload`，所以现在**先保存再离开**——用的是渲染层早已备好的 `onCloseCheck` / `onCloseSaveRequest` 握手。新增 `test:core:document-switch-save`：打完字之后**先断言文件还没变**（证明是「离开」这个动作保存的），再点另一个文件，断言文件变了、探针在 `word/document.xml` 里、而且视图确实被隐藏了（守卫没把面板卡住）。
 

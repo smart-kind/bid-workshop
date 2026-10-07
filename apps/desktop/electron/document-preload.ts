@@ -4,17 +4,26 @@ import { DOCUMENT_IPC, DOCUMENT_PUSH, DOCUMENT_REPORT } from "./documents/docume
 /**
  * `window.desktop` for the hosted document editor.
  *
- * Backed for real: the boot consumes (open handoff, blank document, AI content),
- * the whole save family (save in place, Save As, first save, save to an explicit
- * path, crash-recovery copy), the recent-documents list, and the menu-command
- * channel the native File > Save / Save As items drive.
+ * Backed for real: the boot handoff (open, blank document), the whole save family
+ * (save in place, Save As, first save, save to an explicit path, recovery copy),
+ * the recent-documents list, comments and revisions through the document itself,
+ * export to HTML and PDF, and the menu-command and close-check channels the
+ * native File menu drives.
  *
- * Still inert, each for a reason recorded in docs/shell-plan.md §七: print and
- * export, images and the clipboard, the editor's own AI panel, Zotero, MCP, and
- * password-protected documents.
+ * What is not backed says so rather than looking like a cancelled dialog: every
+ * member whose contract carries an `error` field returns one. The rest are
+ * members whose only "no" is `null` (a cancelled picker) or `{ ok: false }` with
+ * no field to explain itself, and they are listed with their reasons in
+ * docs/shell-plan.md §七.
  */
 const noop = (): void => {};
 const unsubscribe = (): (() => void) => noop;
+
+/** For members whose contract has an error field: a refusal, not a cancellation. */
+const unsupported = (what: string): { ok: false; error: string } => ({
+  ok: false,
+  error: `${what} is not available in this host.`,
+});
 
 function subscribeArgs<Args extends readonly unknown[]>(
   channel: string,
@@ -41,6 +50,7 @@ const desktop = {
   zoteroCommand: () => Promise.resolve({ ok: false, errorCode: "unsupported-command" }),
   onZoteroRequest: unsubscribe,
   respondToZotero: noop,
+  // A cancelled file picker is the only "no" these two can report (see §七).
   openDocx: () => Promise.resolve(null),
   openDocxPath: () => Promise.resolve(null),
   openDocxDecrypt: () => Promise.resolve({ ok: false, reason: "unsupported" }),
@@ -53,7 +63,7 @@ const desktop = {
   consumeAiDocContent: () => Promise.resolve(null),
   consumeHeadlessExport: () => Promise.resolve(null),
   headlessExportDone: noop,
-  createDocument: () => Promise.resolve({ ok: false }),
+  createDocument: () => Promise.resolve(unsupported("Creating a document from the editor")),
   onOpenDocx: unsubscribe,
   onRenamedDocx: unsubscribe,
   saveDocx: (path: string, data: ArrayBuffer, auto?: boolean) =>
@@ -74,7 +84,7 @@ const desktop = {
   fontMetrics: () => Promise.resolve(null),
   getAiSettings: () => Promise.resolve({ provider: "anthropic", providers: {} }),
   setAiSettings: noop,
-  print: () => Promise.resolve({ ok: false }),
+  print: () => Promise.resolve(unsupported("Printing")),
   exportPdf: (
     defaultName: string,
     pageWidthTwips: number,
@@ -90,14 +100,14 @@ const desktop = {
     ),
   exportHtml: (defaultName: string, html: string, outPath?: string) =>
     ipcRenderer.invoke(DOCUMENT_IPC.exportHtml, defaultName, html, outPath ?? null),
-  printPdfBuffer: () => Promise.resolve({ ok: false }),
-  saveMergedPdf: () => Promise.resolve({ ok: false }),
+  printPdfBuffer: () => Promise.resolve(unsupported("Chunked PDF printing")),
+  saveMergedPdf: () => Promise.resolve(unsupported("Merging PDF parts")),
   pickExportImagesTarget: () => Promise.resolve(null),
-  takeExportPdf: () => Promise.resolve({ ok: false }),
-  writeExportImage: () => Promise.resolve({ ok: false }),
-  saveImageAs: () => Promise.resolve({ ok: false }),
+  takeExportPdf: () => Promise.resolve(unsupported("Exporting images")),
+  writeExportImage: () => Promise.resolve(unsupported("Exporting images")),
+  saveImageAs: () => Promise.resolve(unsupported("Saving a picture")),
   onViewImage: unsubscribe,
-  aiChat: () => Promise.resolve({ ok: false }),
+  aiChat: () => Promise.resolve(unsupported("The editor's own chat")),
   aiStream: noop,
   aiStreamCancel: noop,
   aiGskStatus: () => Promise.resolve({ loggedIn: false }),
