@@ -12,6 +12,7 @@ import {
   type WorkspaceZoneResolver,
 } from "../../contracts/workspace-zones";
 import { readJsonWithBackup, writeFileAtomicQueued } from "../persistence/atomic-file-write";
+import { probeBusinessWorkspace, type BusinessWorkspaceProbe } from "./workspace-probe";
 
 /**
  * Reading `.bid/workspace.json` never throws: a broken profile must not block
@@ -29,6 +30,21 @@ export type WorkspaceProfileState =
     }
   | { readonly status: "missing"; readonly path: string }
   | { readonly status: "invalid"; readonly path: string; readonly reason: string };
+
+/**
+ * The profile state plus, when there is no usable profile, what the folder
+ * looks like — the input the open flow uses to offer a recommended profile and
+ * to explain why an existing one is unusable.
+ */
+export type WorkspaceBusinessState =
+  | Extract<WorkspaceProfileState, { readonly status: "ok" }>
+  | { readonly status: "missing"; readonly path: string; readonly probe: BusinessWorkspaceProbe }
+  | {
+      readonly status: "invalid";
+      readonly path: string;
+      readonly reason: string;
+      readonly probe: BusinessWorkspaceProbe;
+    };
 
 /**
  * Owns the business profile of a workspace: read, validate, write, rebuild.
@@ -60,6 +76,19 @@ export class WorkspaceProfileOwner {
     } catch (error) {
       return { status: "invalid", path, reason: errorMessage(error) };
     }
+  }
+
+  /**
+   * The business state of a workspace: the profile when it is usable, otherwise
+   * the same three-way answer plus what the folder itself suggests.
+   */
+  async readBusiness(workspacePath: string): Promise<WorkspaceBusinessState> {
+    const state = await this.read(workspacePath);
+    if (state.status === "ok") return state;
+    const probe = await probeBusinessWorkspace(workspacePath);
+    return state.status === "invalid"
+      ? { status: "invalid", path: state.path, reason: state.reason, probe }
+      : { status: "missing", path: state.path, probe };
   }
 
   /**

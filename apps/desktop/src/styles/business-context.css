@@ -42,3 +42,23 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.business-context__action {
+  flex: none;
+  padding: 1px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.business-context__action:hover:not(:disabled) {
+  background: var(--hover, transparent);
+}
+
+.business-context__action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

@@ -13,6 +13,7 @@ import {
 import {
   desktopIpc,
   type BusinessWorkspaceContextResult,
+  type BusinessWorkspaceSuggestion,
   type ChangedFilesResult,
   type CustomProviderProbeInput,
   type CustomProviderProbeResult,
@@ -22,7 +23,8 @@ import type { NotificationPermissionService } from "../platform/notification-per
 import type { TerminalService } from "../platform/terminal-service";
 import type { ThemeManager } from "../platform/theme-manager";
 import type { WindowOwner } from "../windows/window-owner";
-import type { WorkspaceProfileState } from "../workspace/workspace-profile";
+import type { WorkspaceBusinessState } from "../workspace/workspace-profile";
+import type { BusinessWorkspaceProbe } from "../workspace/workspace-probe";
 import type { PendingComposerDraftFlusher } from "../windows/pending-draft-flush";
 import { WorkbenchRequests, type WorkbenchOwner } from "./workbench-requests";
 import type { DesktopExtensionViewOwner } from "../extensions/extension-view-owner";
@@ -99,7 +101,7 @@ type WorkspaceOwner = Pick<
   | "syncCurrentWorkspace"
   | "getWorkspacePath"
   | "getWorkspaceRecords"
-  | "readWorkspaceProfile"
+  | "readWorkspaceBusiness"
   | "updateWorkspaceProfile"
 >;
 
@@ -270,23 +272,34 @@ export function registerDesktopIpc({
     expectSaveTaskWorkbenchTemplateInput,
     (input, request) => workbench.save(trackWorkbenchSender(request.contents), input),
   );
+  const toSuggestion = (probe: BusinessWorkspaceProbe): BusinessWorkspaceSuggestion => ({
+    documents: probe.documents,
+    ...(probe.criteriaFile === undefined ? {} : { criteriaFile: probe.criteriaFile }),
+    zoneDirectories: probe.zoneDirectories,
+    looksLikeBusiness: probe.looksLikeBusiness,
+    proposedProfile: probe.proposedProfile,
+  });
   const projectBusinessContext = async (
-    state: Promise<WorkspaceProfileState | undefined>,
+    state: Promise<WorkspaceBusinessState | undefined>,
   ): Promise<BusinessWorkspaceContextResult> => {
     const resolved = await state;
     switch (resolved?.status) {
       case "ok":
         return { status: "ok", context: resolved.context };
       case "invalid":
-        return { status: "invalid", reason: resolved.reason };
+        return {
+          status: "invalid",
+          reason: resolved.reason,
+          suggestion: toSuggestion(resolved.probe),
+        };
       case "missing":
-        return { status: "missing" };
+        return { status: "missing", suggestion: toSuggestion(resolved.probe) };
       default:
         return { status: "unknown-workspace" };
     }
   };
   handleMainFrame(desktopIpc.getWorkspaceContext, expectGetWorkspaceContextInput, (input) =>
-    projectBusinessContext(owners.workspace.readWorkspaceProfile(input.workspaceId)),
+    projectBusinessContext(owners.workspace.readWorkspaceBusiness(input.workspaceId)),
   );
   handleMainFrame(desktopIpc.updateWorkspaceProfile, expectUpdateWorkspaceProfileInput, (input) =>
     projectBusinessContext(

@@ -713,14 +713,31 @@ export interface UpdateWorkspaceProfileInput {
 }
 
 /**
+ * What a folder looks like when it has no usable profile: the review
+ * candidates found, and the profile we would write if the user accepts.
+ */
+export interface BusinessWorkspaceSuggestion {
+  readonly documents: readonly string[];
+  readonly criteriaFile?: string;
+  readonly zoneDirectories: readonly string[];
+  /** False when nothing suggests a bid workspace; then we do not ask. */
+  readonly looksLikeBusiness: boolean;
+  readonly proposedProfile: WorkspaceProfile;
+}
+
+/**
  * The business layer of a workspace, addressed to the window that asked for it.
  * `missing` and `invalid` are ordinary answers: a broken profile never blocks
  * opening the folder.
  */
 export type BusinessWorkspaceContextResult =
   | { readonly status: "ok"; readonly context: BusinessWorkspaceContext }
-  | { readonly status: "missing" }
-  | { readonly status: "invalid"; readonly reason: string }
+  | { readonly status: "missing"; readonly suggestion: BusinessWorkspaceSuggestion }
+  | {
+      readonly status: "invalid";
+      readonly reason: string;
+      readonly suggestion: BusinessWorkspaceSuggestion;
+    }
   | { readonly status: "unknown-workspace" };
 
 export interface PiDesktopApi {

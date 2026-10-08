@@ -91,7 +91,11 @@ import {
 } from "../persistence/app-store-persistence";
 import { AttachmentStore } from "../persistence/attachment-store";
 import type { WorkspaceProfile } from "../../contracts/business-workspace";
-import { WorkspaceProfileOwner, type WorkspaceProfileState } from "../workspace/workspace-profile";
+import {
+  WorkspaceProfileOwner,
+  type WorkspaceBusinessState,
+  type WorkspaceProfileState,
+} from "../workspace/workspace-profile";
 import {
   type PendingRuntimeCommandExecution,
   getLearnedCommandCompatibility,
@@ -874,13 +878,13 @@ export class DesktopAppStore {
   }
 
   /**
-   * The business profile of an open workspace, or `undefined` when the workspace
+   * The business state of an open workspace, or `undefined` when the workspace
    * is not open. Never throws: a broken profile is reported as its own state so
    * the folder still opens.
    */
-  async readWorkspaceProfile(workspaceId: string): Promise<WorkspaceProfileState | undefined> {
+  async readWorkspaceBusiness(workspaceId: string): Promise<WorkspaceBusinessState | undefined> {
     const path = this.getWorkspacePath(workspaceId);
-    return path === undefined ? undefined : this.workspaceProfile.read(path);
+    return path === undefined ? undefined : this.workspaceProfile.readBusiness(path);
   }
 
   /**
@@ -891,7 +895,7 @@ export class DesktopAppStore {
   async updateWorkspaceProfile(
     workspaceId: string,
     profile: WorkspaceProfile,
-  ): Promise<WorkspaceProfileState | undefined> {
+  ): Promise<WorkspaceBusinessState | undefined> {
     const path = this.getWorkspacePath(workspaceId);
     if (path === undefined) return undefined;
     const current = await this.workspaceProfile.read(path);
@@ -900,7 +904,7 @@ export class DesktopAppStore {
     } else {
       await this.workspaceProfile.write(path, profile);
     }
-    return this.workspaceProfile.read(path);
+    return this.workspaceProfile.readBusiness(path);
   }
 
   /** The current folders and their threads, for checks that must not wait on a state copy. */
