@@ -43,6 +43,8 @@ export interface Finding {
   /** Required unless the verdict says the criterion is met. */
   readonly problem?: string;
   readonly advice?: string;
+  /** Where the conclusion's evidence came from, so it can be re-checked (R6). */
+  readonly sources?: readonly FindingSource[];
   readonly disposition: FindingDisposition;
   /** Who dispositioned it, when, and why — kept even for a rejection. */
   readonly disposedBy?: string;
@@ -69,6 +71,14 @@ export interface ReviewRunHeader {
   readonly model?: string;
 }
 
+/** One thing a conclusion rested on: a data source, a skill, or the document itself. */
+export interface FindingSource {
+  readonly kind: "mcp" | "skill" | "document";
+  readonly name: string;
+  /** When the source was consulted, when the caller knows. */
+  readonly at?: string;
+}
+
 export interface Ledger {
   readonly header: ReviewRunHeader;
   readonly findings: readonly Finding[];
@@ -84,6 +94,7 @@ export interface FindingInput {
   readonly location?: FindingLocation;
   readonly problem?: string;
   readonly advice?: string;
+  readonly sources?: readonly FindingSource[];
 }
 
 /**
@@ -159,6 +170,7 @@ export function makeFinding(input: FindingInput): Finding {
     ...(location ? { location } : {}),
     ...(input.problem?.trim() ? { problem: input.problem.trim() } : {}),
     ...(input.advice?.trim() ? { advice: input.advice.trim() } : {}),
+    ...(input.sources && input.sources.length > 0 ? { sources: input.sources } : {}),
   };
   return finding;
 }

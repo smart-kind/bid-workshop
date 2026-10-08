@@ -21,6 +21,7 @@ import { describeCommentSync, planDispositionMirror } from "./comment-mirror";
 import { renderMarkdownReport, writeReviewReport } from "./report";
 import { FINALIZE_NOTE, finalizeBidDocument } from "./finalize";
 import { describeRunSkills, resolveRunSkills } from "./skills-index";
+import { describeRunCapabilities, resolveRunCapabilities } from "./mcp-index";
 import { docxDispositionMirror } from "./parser-docx.mjs";
 import {
   buildLedger,
@@ -133,6 +134,16 @@ const FINDING = Type.Object({
   quote: Type.Optional(Type.String({ description: "最小必要的原文摘录" })),
   basis: Type.Optional(Type.String({ description: "依据：对应审查条件的哪一条" })),
   suggestion: Type.Optional(Type.String({ description: "修改建议" })),
+  sources: Type.Optional(
+    Type.Array(
+      Type.Object({
+        kind: Type.Union([Type.Literal("mcp"), Type.Literal("skill"), Type.Literal("document")]),
+        name: Type.String({ minLength: 1, description: "来源名称，例如 MCP server 名" }),
+        at: Type.Optional(Type.String({ description: "查阅时间（ISO）" })),
+      }),
+      { description: "结论依据的来源，便于复核（R6）" },
+    ),
+  ),
 });
 
 /** Parse a .docx and register it as a loaded document. */
@@ -162,6 +173,9 @@ let lastWorkingCopy: string | null = null;
 /** The skills the last run rested on, so a later step can name them. */
 let runSkills: Awaited<ReturnType<typeof resolveRunSkills>> | null = null;
 
+/** The data sources the last run could reach, and the ones the profile wanted. */
+let runCapabilities: Awaited<ReturnType<typeof resolveRunCapabilities>> | null = null;
+
 /**
  * The submitted finding as a ledger entry. Until the tool's own schema carries a
  * verdict, everything recorded is a problem — which is what makes `problem`
@@ -178,6 +192,7 @@ function toLedgerInput(finding: {
   quote?: string;
   basis?: string;
   suggestion?: string;
+  sources?: readonly { kind: "mcp" | "skill" | "document"; name: string; at?: string }[];
 }): LedgerFindingInput {
   const location: FindingLocation = {};
   if (finding.section !== undefined) location.section = finding.section;
@@ -192,6 +207,7 @@ function toLedgerInput(finding: {
     ...(finding.basis ? { basis: finding.basis } : {}),
     ...(Object.keys(location).length > 0 ? { location } : {}),
     ...(finding.suggestion ? { advice: finding.suggestion } : {}),
+    ...(finding.sources && finding.sources.length > 0 ? { sources: finding.sources } : {}),
   };
 }
 
@@ -424,7 +440,7 @@ export default function bidReview(pi: ExtensionAPI) {
         content: [
           {
             type: "text",
-            text: `已记录 ${issues.length} 条结论（严重 ${counts.critical} / 警告 ${counts.warning} / 提示 ${counts.info}），${progress?.pending ?? 0} 条待处置${diff ? `；与上一轮相比：${describeRunDiff(diff)}` : ""}${runSkills ? `；${describeRunSkills(runSkills)}` : ""}`,
+            text: `已记录 ${issues.length} 条结论（严重 ${counts.critical} / 警告 ${counts.warning} / 提示 ${counts.info}），${progress?.pending ?? 0} 条待处置${diff ? `；与上一轮相比：${describeRunDiff(diff)}` : ""}${runSkills ? `；${describeRunSkills(runSkills)}` : ""}${runCapabilities ? `；${describeRunCapabilities(runCapabilities)}` : ""}`,
           },
         ],
         details: {
@@ -433,6 +449,9 @@ export default function bidReview(pi: ExtensionAPI) {
           ...(progress ? { progress } : {}),
           ...(diff ? { diff: diff.counts } : {}),
           ...(runSkills ? { skills: runSkills.skills, missingSkills: runSkills.missing } : {}),
+          ...(runCapabilities
+            ? { mcpServers: runCapabilities.servers, missingMcpServers: runCapabilities.missing }
+            : {}),
         },
       };
     },
