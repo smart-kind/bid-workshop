@@ -20,6 +20,7 @@ import { describeRunDiff, diffLedgers } from "./run-diff";
 import { describeCommentSync, planDispositionMirror } from "./comment-mirror";
 import { renderMarkdownReport, writeReviewReport } from "./report";
 import { FINALIZE_NOTE, finalizeBidDocument } from "./finalize";
+import { describeRunSkills, resolveRunSkills } from "./skills-index";
 import { docxDispositionMirror } from "./parser-docx.mjs";
 import {
   buildLedger,
@@ -157,6 +158,9 @@ let currentLedger: Ledger | null = null;
 
 /** The working copy the last write produced: what dispositions mirror onto. */
 let lastWorkingCopy: string | null = null;
+
+/** The skills the last run rested on, so a later step can name them. */
+let runSkills: Awaited<ReturnType<typeof resolveRunSkills>> | null = null;
 
 /**
  * The submitted finding as a ledger entry. Until the tool's own schema carries a
@@ -362,11 +366,17 @@ export default function bidReview(pi: ExtensionAPI) {
       let ledger: Ledger | null = null;
       if (doc) {
         const criteria = readCriteria(doc.path);
+        // The workspace's enable-list, resolved against what is really there:
+        // a skill the profile asked for and the workspace lacks is reported.
+        runSkills = await resolveRunSkills({
+          workspacePath: sessionCwd ?? dirname(resolve(doc.path)),
+        });
         const header = runHeader({
           runId: crypto.randomUUID(),
           startedAt: new Date().toISOString(),
           documentPath: doc.path,
           documentFingerprint: await documentFingerprint(doc.path),
+          skills: runSkills.skills,
           ...(criteria.path
             ? {
                 criteria: {
@@ -414,7 +424,7 @@ export default function bidReview(pi: ExtensionAPI) {
         content: [
           {
             type: "text",
-            text: `已记录 ${issues.length} 条结论（严重 ${counts.critical} / 警告 ${counts.warning} / 提示 ${counts.info}），${progress?.pending ?? 0} 条待处置${diff ? `；与上一轮相比：${describeRunDiff(diff)}` : ""}`,
+            text: `已记录 ${issues.length} 条结论（严重 ${counts.critical} / 警告 ${counts.warning} / 提示 ${counts.info}），${progress?.pending ?? 0} 条待处置${diff ? `；与上一轮相比：${describeRunDiff(diff)}` : ""}${runSkills ? `；${describeRunSkills(runSkills)}` : ""}`,
           },
         ],
         details: {
@@ -422,6 +432,7 @@ export default function bidReview(pi: ExtensionAPI) {
           ...counts,
           ...(progress ? { progress } : {}),
           ...(diff ? { diff: diff.counts } : {}),
+          ...(runSkills ? { skills: runSkills.skills, missingSkills: runSkills.missing } : {}),
         },
       };
     },
