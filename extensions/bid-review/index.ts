@@ -17,6 +17,8 @@ import {
 } from "./document";
 import { describeWorkingCopyFailure, writeBidWorkingCopy } from "./working-copy";
 import { describeRunDiff, diffLedgers } from "./run-diff";
+import { describeCommentSync, planDispositionMirror } from "./comment-mirror";
+import { docxDispositionMirror } from "./parser-docx.mjs";
 import {
   buildLedger,
   disposeFinding,
@@ -150,6 +152,9 @@ async function ingestDocument(inputPath: string): Promise<BidDocument> {
 
 /** The ledger of the latest run: the record dispositions are written into. */
 let currentLedger: Ledger | null = null;
+
+/** The working copy the last write produced: what dispositions mirror onto. */
+let lastWorkingCopy: string | null = null;
 
 /**
  * The submitted finding as a ledger entry. Until the tool's own schema carries a
@@ -476,6 +481,53 @@ export default function bidReview(pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    name: "bid_sync_comments",
+    label: "Sync dispositions with the working copy",
+    description:
+      "Mirror the ledger's dispositions onto the working copy's comments (mark resolved, append the reason) and report where the document disagrees. Explicit and one-way: the ledger stays the authority",
+    parameters: Type.Object({
+      filePath: Type.Optional(
+        Type.String({ description: "工作副本路径；省略则用最近一次写出的副本" }),
+      ),
+    }),
+    async execute(_id, input) {
+      const sourcePath = input.filePath ?? lastWorkingCopy;
+      if (!sourcePath) {
+        return {
+          content: [{ type: "text", text: "还没有工作副本：请先用 bid_write_comments 写出" }],
+          details: { mirrored: 0, unmatched: [], disagreements: 0 },
+          isError: true,
+        };
+      }
+      if (!currentLedger) {
+        return {
+          content: [{ type: "text", text: "还没有台账：请先用 bid_record_findings 记录结论" }],
+          details: { mirrored: 0, unmatched: [], disagreements: 0 },
+          isError: true,
+        };
+      }
+
+      const parsed = await docxParser.parse(sourcePath);
+      const plan = planDispositionMirror(parsed.parsed.comments, currentLedger);
+      const outputPath = sourcePath.replace(/\.docx$/i, "") + "-已处置.docx";
+      const result = await docxDispositionMirror.mirror({ sourcePath, outputPath, plan });
+      const rows = describeCommentSync(parsed.parsed.comments, currentLedger);
+      const disagreements = rows.filter((row) => row.disagrees).length;
+      const unmatchedNote =
+        plan.unmatched.length > 0 ? `；${plan.unmatched.length} 条在文档里找不到对应批注` : "";
+      return {
+        content: [
+          {
+            type: "text",
+            text: `已把 ${result.mirrored} 条处置写回批注（含 ${result.replies} 条回复）到 ${result.outputPath}${unmatchedNote}；文档与台账不一致 ${disagreements} 处（台账为准，未自动改动）`,
+          },
+        ],
+        details: { mirrored: result.mirrored, unmatched: plan.unmatched, disagreements },
+      };
+    },
+  });
+
+  pi.registerTool({
     name: "bid_write_comments",
     label: "Write findings as Word comments",
     description:
@@ -532,6 +584,7 @@ export default function bidReview(pi: ExtensionAPI) {
             isError: true,
           };
         }
+        lastWorkingCopy = result.outputPath;
         const skipped = [...result.skipped, ...unanchored];
         const tableNote =
           result.degraded.length > 0

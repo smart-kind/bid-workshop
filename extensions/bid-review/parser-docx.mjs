@@ -202,3 +202,46 @@ export const docxCommentWriter = {
     };
   },
 };
+
+/**
+ * Write the ledger's dispositions onto the comments that raised them: mark the
+ * comment resolved and append the reason as a reply. Nothing else about the
+ * document is touched — every block is saved as it was parsed.
+ */
+export const docxDispositionMirror = {
+  async mirror({ sourcePath, outputPath, plan }) {
+    const bytes = await readFile(sourcePath);
+    const parsed = await parseDocx(new Uint8Array(bytes));
+    const existing = parsed.comments ?? [];
+    const updates = new Map(plan.updates.map((update) => [String(update.commentId), update]));
+
+    let nextId = existing.reduce((max, comment) => Math.max(max, Number(comment.id) || 0), 0) + 1;
+    const comments = existing.map((comment) => {
+      const update = updates.get(String(comment.id));
+      const info = { id: String(comment.id), author: comment.author, text: comment.text };
+      if (comment.date) info.date = comment.date;
+      if (update) info.done = update.done;
+      else if (comment.done !== undefined) info.done = comment.done;
+      return info;
+    });
+    let replies = 0;
+    for (const update of plan.updates) {
+      if (!update.reply) continue;
+      comments.push({
+        id: String(nextId++),
+        author: "应用",
+        text: update.reply,
+        done: true,
+        parentId: String(update.commentId),
+      });
+      replies += 1;
+    }
+
+    const saveBlocks = parsed.blocks
+      .filter((block) => !block.hidden)
+      .map((block) => ({ kind: "original", docxIndex: block.docxIndex }));
+    const out = await saveDocx(parsed, saveBlocks, { comments });
+    await writeFile(outputPath, out);
+    return { outputPath, mirrored: plan.updates.length, replies };
+  },
+};
