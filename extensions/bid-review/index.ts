@@ -16,6 +16,7 @@ import {
   type LoadedBid,
 } from "./document";
 import { describeWorkingCopyFailure, writeBidWorkingCopy } from "./working-copy";
+import { describeRunDiff, diffLedgers } from "./run-diff";
 import {
   buildLedger,
   disposeFinding,
@@ -380,6 +381,15 @@ export default function bidReview(pi: ExtensionAPI) {
           };
         }
       }
+      // Only compare against a previous run of the same document: a different
+      // file's findings are not a change, they are a different review.
+      const previous = currentLedger;
+      const diff =
+        ledger &&
+        previous &&
+        previous.header.documentFingerprint === ledger.header.documentFingerprint
+          ? diffLedgers(previous, ledger)
+          : null;
       currentLedger = ledger;
 
       publish({
@@ -397,10 +407,15 @@ export default function bidReview(pi: ExtensionAPI) {
         content: [
           {
             type: "text",
-            text: `已记录 ${issues.length} 条结论（严重 ${counts.critical} / 警告 ${counts.warning} / 提示 ${counts.info}），${progress?.pending ?? 0} 条待处置`,
+            text: `已记录 ${issues.length} 条结论（严重 ${counts.critical} / 警告 ${counts.warning} / 提示 ${counts.info}），${progress?.pending ?? 0} 条待处置${diff ? `；与上一轮相比：${describeRunDiff(diff)}` : ""}`,
           },
         ],
-        details: { count: issues.length, ...counts, ...(progress ? { progress } : {}) },
+        details: {
+          count: issues.length,
+          ...counts,
+          ...(progress ? { progress } : {}),
+          ...(diff ? { diff: diff.counts } : {}),
+        },
       };
     },
   });
