@@ -107,6 +107,12 @@ const TURN_CAPTURE_BACKSTOP_MS = 10_000;
 let store: DesktopAppStore;
 let extensionViewOwner: DesktopExtensionViewOwner | undefined;
 let documentViewOwner: DocumentViewOwner | undefined;
+
+/** Whether a document view starts with the editor's built-in AI panel showing. */
+let documentAiPanelDefault = false;
+
+/** The View menu item that reflects, and sets, that default. */
+const DOCUMENT_AI_MENU_ID = "view.document-ai-panel";
 let windowOwner: WindowOwner;
 const themeManager = new ThemeManager();
 let mainWindow: BrowserWindow | null = null;
@@ -912,6 +918,21 @@ function installApplicationMenu(): void {
         },
         { role: "toggleDevTools" },
         { type: "separator" },
+        {
+          // A presentation switch, not a boundary: the panel is the editor's
+          // own, and this only decides whether it is showing to begin with.
+          id: DOCUMENT_AI_MENU_ID,
+          label: "显示文档视图的内置 AI 面板",
+          type: "checkbox",
+          checked: documentAiPanelDefault,
+          click: (item) => {
+            documentAiPanelDefault = item.checked;
+            // A live view is booted already; reload it so it reads the new
+            // preference the same way a freshly opened one would.
+            documentViewOwner?.reloadViews();
+          },
+        },
+        { type: "separator" },
         { role: "resetZoom" },
         { role: "zoomIn" },
         { role: "zoomOut" },
@@ -1023,6 +1044,13 @@ app
       // its parse/render work there, as the app window already does.
       backgroundThrottling: windowTestMode !== "background",
       onDiagnostic: (message) => console.error("[document-view]", message),
+      aiPanelDefault: () => documentAiPanelDefault,
+      onViewMenuState: (state) => {
+        // The view's own chrome decides what the menu shows; the menu decides
+        // what the next view starts with.
+        const item = Menu.getApplicationMenu()?.getMenuItemById(DOCUMENT_AI_MENU_ID);
+        if (item && typeof state.aiSidebar === "boolean") item.checked = state.aiSidebar;
+      },
     });
     documentView.installIpc();
     installDocumentProtocol(documentView);

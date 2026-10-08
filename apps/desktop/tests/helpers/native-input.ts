@@ -211,7 +211,14 @@ export async function triggerNativeOpenFolderShortcut(harness: DesktopHarness): 
 export async function getApplicationMenuItemInfo(
   harness: DesktopHarness,
   menuItemId: string,
-): Promise<{ id: string; label: string; accelerator: string; parentLabel: string | null } | null> {
+): Promise<{
+  id: string;
+  label: string;
+  accelerator: string;
+  parentLabel: string | null;
+  /** Only meaningful for a checkbox item. */
+  checked: boolean;
+} | null> {
   return harness.electronApp.evaluate(({ Menu }, targetId) => {
     const menu = Menu.getApplicationMenu();
     if (!menu) return null;
@@ -227,6 +234,7 @@ export async function getApplicationMenuItemInfo(
           label: item.label,
           accelerator: item.accelerator ? String(item.accelerator) : "",
           parentLabel,
+          checked: item.checked === true,
         };
       }
       for (const child of item.submenu?.items ?? []) {

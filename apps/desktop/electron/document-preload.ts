@@ -20,6 +20,16 @@ import { DOCUMENT_IPC } from "./documents/document-channels";
 // provider, so an open panel would offer something that cannot work. It is a
 // presentation default, not a boundary: the editor's own toggle turns it back
 // on, and the reader's own preference is respected when they already set one.
+/** The host's preference for the editor's AI panel, asked for before boot. */
+const showAiPreference = ((): string | undefined => {
+  try {
+    const answer: unknown = ipcRenderer.sendSync(DOCUMENT_IPC.aiPanelDefault);
+    return typeof answer === "string" ? answer : undefined;
+  } catch {
+    return undefined;
+  }
+})();
+
 try {
   // Typed by hand: this preload's project has no DOM library, and the storage
   // belongs to the document's own origin.
@@ -31,7 +41,11 @@ try {
       };
     }
   ).localStorage;
-  if (storage && storage.getItem("aidocs.showAi") === null) {
+  if (storage && (showAiPreference === "0" || showAiPreference === "1")) {
+    // The host decided for this view; the reader's own choice applies to views
+    // that did not carry one.
+    storage.setItem("aidocs.showAi", showAiPreference);
+  } else if (storage && storage.getItem("aidocs.showAi") === null) {
     storage.setItem("aidocs.showAi", "0");
   }
 } catch {
@@ -118,7 +132,8 @@ const desktop = {
   reportCloseCheck: noop,
   onCloseSaveRequest: unsubscribe,
   reportCloseSaveResult: noop,
-  reportViewMenuState: noop,
+  reportViewMenuState: (state: unknown) =>
+    ipcRenderer.send(DOCUMENT_IPC.reportViewMenuState, state),
 };
 
 contextBridge.exposeInMainWorld("desktop", desktop);

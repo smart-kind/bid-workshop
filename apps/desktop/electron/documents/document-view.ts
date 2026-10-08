@@ -40,6 +40,16 @@ export interface DocumentViewOwnerOptions {
   /** Keep the renderer live while its window is hidden (tests run background windows). */
   readonly backgroundThrottling?: boolean;
   readonly onDiagnostic?: (message: string) => void;
+  /** Whether a new view starts with the editor's built-in AI panel showing. */
+  readonly aiPanelDefault?: () => boolean;
+  /** The view reporting what its own chrome is doing, for the host's menu. */
+  readonly onViewMenuState?: (state: DocumentViewMenuState) => void;
+}
+
+/** What the hosted editor tells the host about its own chrome. */
+export interface DocumentViewMenuState {
+  readonly aiSidebar?: boolean;
+  readonly darkCanvas?: boolean;
 }
 
 interface Handoff {
@@ -77,12 +87,18 @@ export class DocumentViewOwner {
   private readonly preloadPath: string;
   private readonly backgroundThrottling: boolean;
   private readonly onDiagnostic: (message: string) => void;
+  private readonly aiPanelDefault: () => boolean;
+  private readonly onViewMenuState: (state: DocumentViewMenuState) => void;
+  /** The last state a view reported, so a menu can start from it. */
+  reportedViewMenuState: DocumentViewMenuState | null = null;
 
   constructor(options: DocumentViewOwnerOptions) {
     this.distRoot = options.distRoot;
     this.preloadPath = options.preloadPath;
     this.backgroundThrottling = options.backgroundThrottling ?? true;
     this.onDiagnostic = options.onDiagnostic ?? (() => {});
+    this.aiPanelDefault = options.aiPanelDefault ?? (() => false);
+    this.onViewMenuState = options.onViewMenuState ?? (() => {});
   }
 
   /** Register the doc preload's boot IPC. Called once before any view is created. */
@@ -92,6 +108,18 @@ export class DocumentViewOwner {
     );
     ipcMain.handle(DOCUMENT_IPC.consumeNewBlank, () => false);
     ipcMain.handle(DOCUMENT_IPC.consumeAiDocContent, () => null);
+    // Answered synchronously at boot: the preload has to know before the editor
+    // renders, and a reload must see the host's current choice, not the one the
+    // view was first created with.
+    ipcMain.on(DOCUMENT_IPC.aiPanelDefault, (event) => {
+      event.returnValue = this.aiPanelDefault() ? "1" : "0";
+    });
+    ipcMain.on(DOCUMENT_IPC.reportViewMenuState, (_event, state: unknown) => {
+      const parsed = parseViewMenuState(state);
+      if (!parsed) return;
+      this.reportedViewMenuState = parsed;
+      this.onViewMenuState(parsed);
+    });
   }
 
   /** Show `input.absolutePath` in `window`'s document view at `input.rect`, creating the view on first use. */
@@ -124,6 +152,13 @@ export class DocumentViewOwner {
         .catch((error: unknown) =>
           this.onDiagnostic(`load document view failed: ${stringify(error)}`),
         );
+    }
+  }
+
+  /** Re-boot every live view so it picks up the host's current preferences. */
+  reloadViews(): void {
+    for (const entry of this.entries.values()) {
+      if (entry.view.webContents.getURL()) entry.view.webContents.reload();
     }
   }
 
@@ -345,4 +380,14 @@ export function documentSchemePrivileges(): Electron.CustomScheme {
 /** Install the protocol handler. Call once after `app.whenReady`. */
 export function installDocumentProtocol(owner: DocumentViewOwner): void {
   protocol.handle(DOCUMENT_VIEW_SCHEME, (request) => owner.assetResponse(request.url));
+}
+
+/** The editor's chrome report, narrowed to the fields the host understands. */
+export function parseViewMenuState(value: unknown): DocumentViewMenuState | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const state = value as { aiSidebar?: unknown; darkCanvas?: unknown };
+  const parsed: { aiSidebar?: boolean; darkCanvas?: boolean } = {};
+  if (typeof state.aiSidebar === "boolean") parsed.aiSidebar = state.aiSidebar;
+  if (typeof state.darkCanvas === "boolean") parsed.darkCanvas = state.darkCanvas;
+  return Object.keys(parsed).length > 0 ? parsed : undefined;
 }
