@@ -2899,26 +2899,24 @@
   }
 }
 
-.extension-dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: var(--scrim);
-  backdrop-filter: blur(6px);
+/* The question sits in the transcript, not over it: the user must stay able to
+ * read the conversation and switch threads while it waits for an answer. */
+.extension-dialog-slot {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  padding: 12px 24px;
 }
 
 .extension-dialog {
   width: min(560px, 100%);
   display: grid;
   gap: 14px;
-  padding: 22px;
+  padding: 18px 20px;
   border-radius: var(--radius-composer);
   background: var(--surface);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-xl);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-lg);
 }
 
 .custom-endpoint-dialog {

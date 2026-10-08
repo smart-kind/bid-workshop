@@ -51,6 +51,9 @@ test("a question nobody answers says so instead of vanishing, and is not re-aske
 
     const dialog = window.getByTestId("extension-dialog");
     await expect(dialog).toContainText("Ship the draft?");
+    // It is a card in the transcript, not a scrim over the app: the sidebar and
+    // the composer stay usable while the question waits.
+    await expect(window.locator(".extension-dialog-backdrop")).toHaveCount(0);
     // The card settles on its own; the user is told why and nothing was chosen.
     await expect(dialog).toHaveCount(0, { timeout: 8_000 });
     await expect(window.getByTestId("extension-notices")).toContainText(

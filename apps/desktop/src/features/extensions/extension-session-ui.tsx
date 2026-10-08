@@ -214,11 +214,10 @@ export function ExtensionDialog({
   };
 
   return (
-    <div className="extension-dialog-backdrop">
+    <div className="extension-dialog-slot">
       <div
         aria-describedby={dialog.kind === "confirm" ? bodyId : undefined}
         aria-labelledby={titleId}
-        aria-modal="true"
         className="extension-dialog"
         data-testid="extension-dialog"
         ref={dialogRef}
