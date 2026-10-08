@@ -10,10 +10,10 @@ import {
   loadBidDocument,
   setBidCommentWriter,
   setBidDocumentParser,
-  writeBidComments,
   type BidCommentAnchor,
   type LoadedBid,
 } from "./document";
+import { describeWorkingCopyFailure, writeBidWorkingCopy } from "./working-copy";
 import { docxCommentWriter, docxParser } from "./parser-docx.mjs";
 import {
   buildReviewBrief,
@@ -92,10 +92,6 @@ function collectCommentAnchors(issues: BidIssue[]): {
 }
 
 /** Where an annotated copy of a document goes when the caller does not say. */
-function defaultCommentOutput(sourcePath: string): string {
-  return `${sourcePath.replace(/\.docx$/i, "")}-批注.docx`;
-}
-
 /** Details reported by bid_start_review, shared by both branches. */
 interface StartReviewDetails {
   fileIds: string[];
@@ -320,8 +316,11 @@ export default function bidReview(pi: ExtensionAPI) {
       "Write the recorded findings into a copy of the bid document as native Word comments, anchored at the paragraphs they were found in",
     parameters: Type.Object({
       fileId: Type.Optional(Type.String({ description: "文档 id；省略则用最近一次加载的标书" })),
-      outputPath: Type.Optional(
-        Type.String({ description: "输出路径；省略则在原文件旁生成「…-批注.docx」" }),
+      outputDirectory: Type.Optional(
+        Type.String({
+          description:
+            "输出目录；省略则写在原稿旁。副本命名沿用工作区交付规则（默认「…-批注.docx」）",
+        }),
       ),
     }),
     async execute(_id, input) {
@@ -352,13 +351,21 @@ export default function bidReview(pi: ExtensionAPI) {
         };
       }
 
-      const outputPath = input.outputPath ?? defaultCommentOutput(doc.path);
       try {
-        const result = await writeBidComments({
+        const result = await writeBidWorkingCopy({
           sourcePath: doc.path,
-          outputPath,
+          outputDirectory: input.outputDirectory,
           comments: anchored,
         });
+        if (result.status !== "written") {
+          const message = describeWorkingCopyFailure(result) ?? "批注未写入";
+          publish({ ...snapshot, lastError: message });
+          return {
+            content: [{ type: "text", text: message }],
+            details: { outputPath: "", written: 0, unanchored },
+            isError: true,
+          };
+        }
         const skipped = [...result.skipped, ...unanchored];
         const note =
           skipped.length > 0
@@ -382,7 +389,7 @@ export default function bidReview(pi: ExtensionAPI) {
         publish({ ...snapshot, lastError: message });
         return {
           content: [{ type: "text", text: `写入批注失败：${message}` }],
-          details: { outputPath, written: 0, unanchored },
+          details: { outputPath: "", written: 0, unanchored },
           isError: true,
         };
       }
@@ -485,11 +492,13 @@ export default function bidReview(pi: ExtensionAPI) {
                 snapshot.issues.length === 0 ? "还没有审查结论" : "结论里没有可定位的 blockIndex",
               );
             }
-            const result = await writeBidComments({
+            const result = await writeBidWorkingCopy({
               sourcePath: doc.path,
-              outputPath: defaultCommentOutput(doc.path),
               comments: anchors,
             });
+            if (result.status !== "written") {
+              throw new Error(describeWorkingCopyFailure(result) ?? "批注未写入");
+            }
             return {
               outputPath: result.outputPath,
               written: result.written,
