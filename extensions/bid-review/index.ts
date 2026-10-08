@@ -19,6 +19,7 @@ import { describeWorkingCopyFailure, writeBidWorkingCopy } from "./working-copy"
 import { describeRunDiff, diffLedgers } from "./run-diff";
 import { describeCommentSync, planDispositionMirror } from "./comment-mirror";
 import { renderMarkdownReport, writeReviewReport } from "./report";
+import { FINALIZE_NOTE, finalizeBidDocument } from "./finalize";
 import { docxDispositionMirror } from "./parser-docx.mjs";
 import {
   buildLedger,
@@ -478,6 +479,50 @@ export default function bidReview(pi: ExtensionAPI) {
         ],
         details: { disposed: 1, progress: result.progress },
       };
+    },
+  });
+
+  pi.registerTool({
+    name: "bid_finalize_document",
+    label: "Finalise the reviewed document",
+    description:
+      "Save a final copy of the working copy, carrying the comments and the disposition record. The original and the working copy are both kept, and the document's text is not rewritten",
+    parameters: Type.Object({
+      filePath: Type.Optional(
+        Type.String({ description: "工作副本路径；省略则用最近一次写出的副本" }),
+      ),
+      outputDirectory: Type.Optional(
+        Type.String({ description: "定稿输出目录；省略则与原副本同目录" }),
+      ),
+      date: Type.Optional(Type.String({ description: "YYYY-MM-DD；省略则用当天" })),
+    }),
+    async execute(_id, input) {
+      const copyPath = input.filePath ?? lastWorkingCopy;
+      if (!copyPath) {
+        return {
+          content: [{ type: "text", text: "还没有工作副本：请先用 bid_write_comments 写出" }],
+          details: { outputPath: "" },
+          isError: true,
+        };
+      }
+      try {
+        const result = await finalizeBidDocument({
+          copyPath,
+          ...(input.outputDirectory ? { outputDirectory: input.outputDirectory } : {}),
+          date: input.date ?? new Date().toISOString().slice(0, 10),
+        });
+        return {
+          content: [{ type: "text", text: `已生成定稿 ${result.outputPath}。${FINALIZE_NOTE}` }],
+          details: { outputPath: result.outputPath },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          content: [{ type: "text", text: `定稿失败：${message}` }],
+          details: { outputPath: "" },
+          isError: true,
+        };
+      }
     },
   });
 
