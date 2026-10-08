@@ -1,5 +1,14 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readdir, readFile, rename, stat, symlink } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { WorkspaceZoneKind, WorkspaceZones } from "./workspace-types";
 
@@ -163,4 +172,131 @@ async function digest(path: string): Promise<string> {
   return createHash("sha256")
     .update(await readFile(path))
     .digest("hex");
+}
+
+/** The criteria file a workspace starts from, when it has none. */
+export const CRITERIA_SKELETON = `# 评审条件
+
+> 这是骨架：把本项目的评审要求逐条写在这里。技能只说"怎么查"，要求写在这里。
+
+## 一、资格与资质
+
+1. （示例）投标人须具备有效的营业执照，经营范围覆盖本项目内容。
+
+## 二、商务与报价
+
+1. （示例）投标报价不得超过预算金额，且与报价明细一致。
+
+## 三、技术与方案
+
+1. （示例）技术方案须逐条响应本项目的技术要求。
+
+## 四、形式与格式
+
+1. （示例）投标文件须按要求签字盖章，份数与密封符合要求。
+`;
+
+/** What a workspace starts with when it has no profile yet. */
+export function profileSkeleton(zones: WorkspaceZones): string {
+  return `${JSON.stringify(
+    {
+      schemaVersion: 1,
+      business: "bid-tender",
+      zones: { ...zones },
+      skills: ["bid-qualification", "bid-pricing-consistency"],
+      delivery: { commentTarget: "copy", outputSuffix: "-批注", criteriaFile: "评审条件.md" },
+    },
+    null,
+    2,
+  )}\n`;
+}
+
+export type SkeletonOutcome =
+  | { readonly status: "written"; readonly path: string }
+  | { readonly status: "kept"; readonly path: string; readonly reason: string };
+
+/**
+ * Write a starting criteria file. An existing one is kept, never replaced: it is
+ * the project's own requirements and not ours to overwrite.
+ */
+export async function writeCriteriaSkeleton(
+  workspacePath: string,
+  fileName = "评审条件.md",
+): Promise<SkeletonOutcome> {
+  const path = join(workspacePath, fileName);
+  if (await exists(path)) {
+    return { status: "kept", path: fileName, reason: "判据文件已存在，未覆盖" };
+  }
+  await writeFile(path, CRITERIA_SKELETON, "utf8");
+  return { status: "written", path: fileName };
+}
+
+/** Write a starting profile. Like the criteria file, an existing one is kept. */
+export async function writeProfileSkeleton(
+  workspacePath: string,
+  zones: WorkspaceZones,
+): Promise<SkeletonOutcome> {
+  const path = join(workspacePath, ".bid", "workspace.json");
+  if (await exists(path)) {
+    return { status: "kept", path: ".bid/workspace.json", reason: "业务档案已存在，未覆盖" };
+  }
+  await mkdir(join(workspacePath, ".bid"), { recursive: true });
+  await writeFile(path, profileSkeleton(zones), "utf8");
+  return { status: "written", path: ".bid/workspace.json" };
+}
+
+export type GitInitOutcome =
+  | { readonly status: "created" }
+  | { readonly status: "present" }
+  | { readonly status: "skipped"; readonly reason: string };
+
+/**
+ * Put the workspace under version control so organising is undoable. A workspace
+ * that is already a repository, or a machine without git, is not an error —
+ * organising works either way, it is just harder to undo.
+ */
+export async function initWorkspaceGit(workspacePath: string): Promise<GitInitOutcome> {
+  if (await exists(join(workspacePath, ".git"))) return { status: "present" };
+  try {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    await promisify(execFile)("git", ["init", "-b", "main"], { cwd: workspacePath });
+    return { status: "created" };
+  } catch (error) {
+    return { status: "skipped", reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** The design's recommended layout, used when a workspace declares none. */
+export const RECOMMENDED_ZONES: WorkspaceZones = {
+  reference: ["公司资料"],
+  material: ["招标文件"],
+  output: ["产出"],
+  feedback: ["意见"],
+};
+
+/** The zones a workspace declares, or the recommended ones when it declares none. */
+export async function readProfileZones(workspacePath: string): Promise<WorkspaceZones> {
+  try {
+    const raw = await readFile(join(workspacePath, ".bid", "workspace.json"), "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    const zones = (parsed as { zones?: unknown } | null)?.zones;
+    if (!zones || typeof zones !== "object" || Array.isArray(zones)) return RECOMMENDED_ZONES;
+    const read = (kind: WorkspaceZoneKind): readonly string[] => {
+      const value = (zones as Record<string, unknown>)[kind];
+      return Array.isArray(value)
+        ? value.filter((entry): entry is string => typeof entry === "string")
+        : [];
+    };
+    const declared: WorkspaceZones = {
+      reference: read("reference"),
+      material: read("material"),
+      output: read("output"),
+      feedback: read("feedback"),
+    };
+    const empty = Object.values(declared).every((entries) => entries.length === 0);
+    return empty ? RECOMMENDED_ZONES : declared;
+  } catch {
+    return RECOMMENDED_ZONES;
+  }
 }

@@ -2,7 +2,14 @@ import { lstat, mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { applyOrganization, mountIntoZone, planOrganization } from "../organize";
+import {
+  applyOrganization,
+  initWorkspaceGit,
+  mountIntoZone,
+  planOrganization,
+  writeCriteriaSkeleton,
+  writeProfileSkeleton,
+} from "../organize";
 import { EMPTY_ZONES, ZONES } from "./support/zones";
 
 /** T-25: organising is previewable, idempotent, and never rewrites a file. */
@@ -126,4 +133,45 @@ test("an empty workspace with no zones has nothing to organize", async () => {
   const plan = await planOrganization({ workspacePath: root, zones: EMPTY_ZONES });
   expect(plan).toEqual({ actions: [] });
   expect(await applyOrganization(root, plan)).toEqual({ applied: [], conflicts: [] });
+});
+
+test("a starting criteria file is written once and never replaces one", async () => {
+  const root = await workspace();
+  const first = await writeCriteriaSkeleton(root);
+  expect(first).toEqual({ status: "written", path: "评审条件.md" });
+  expect(await readFile(join(root, "评审条件.md"), "utf8")).toContain("## 一、资格与资质");
+
+  await writeFile(join(root, "评审条件.md"), "# 本项目的评审条件\n", "utf8");
+  const second = await writeCriteriaSkeleton(root);
+  expect(second.status).toBe("kept");
+  // The project's own requirements are kept, not overwritten by a skeleton.
+  expect(await readFile(join(root, "评审条件.md"), "utf8")).toBe("# 本项目的评审条件\n");
+});
+
+test("a starting profile is written once and never replaces one", async () => {
+  const root = await workspace();
+  const first = await writeProfileSkeleton(root, ZONES);
+  expect(first).toEqual({ status: "written", path: ".bid/workspace.json" });
+
+  const written = JSON.parse(await readFile(join(root, ".bid", "workspace.json"), "utf8")) as {
+    schemaVersion?: number;
+    zones?: unknown;
+    skills?: unknown;
+  };
+  expect(written.schemaVersion).toBe(1);
+  expect(written.zones).toEqual(ZONES);
+  expect(written.skills).toEqual(["bid-qualification", "bid-pricing-consistency"]);
+
+  const second = await writeProfileSkeleton(root, ZONES);
+  expect(second.status).toBe("kept");
+});
+
+test("versioning is created once and an existing repository is left alone", async () => {
+  const root = await workspace();
+  const created = await initWorkspaceGit(root);
+  expect(["created", "skipped"]).toContain(created.status);
+  if (created.status === "skipped") return;
+
+  expect(await initWorkspaceGit(root)).toEqual({ status: "present" });
+  expect((await stat(join(root, ".git"))).isDirectory()).toBe(true);
 });

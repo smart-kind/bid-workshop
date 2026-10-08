@@ -23,6 +23,14 @@ import { renderMarkdownReport, writeReviewReport } from "./report";
 import { FINALIZE_NOTE, finalizeBidDocument } from "./finalize";
 import { describeRunSkills, resolveRunSkills } from "./skills-index";
 import { describeRunCapabilities, resolveRunCapabilities } from "./mcp-index";
+import {
+  applyOrganization,
+  initWorkspaceGit,
+  planOrganization,
+  readProfileZones,
+  writeCriteriaSkeleton,
+  writeProfileSkeleton,
+} from "./organize";
 import { docxDispositionMirror } from "./parser-docx.mjs";
 import {
   buildLedger,
@@ -544,6 +552,89 @@ export default function bidReview(pi: ExtensionAPI) {
           },
         ],
         details: { disposed: 1, progress: result.progress },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "bid_organize_workspace",
+    label: "Organize the workspace",
+    description:
+      "Put the workspace's files where its zones say they belong. Previews by default; only apply moves anything. Contents are never changed",
+    parameters: Type.Object({
+      apply: Type.Optional(Type.Boolean({ description: "true 才真正执行；默认只预览" })),
+      generateSkeletons: Type.Optional(
+        Type.Boolean({ description: "缺少判据文件/业务档案时生成骨架（不覆盖已有）" }),
+      ),
+      initGit: Type.Optional(
+        Type.Boolean({ description: "未纳入版本控制时 git init；无 git 时静默跳过" }),
+      ),
+    }),
+    async execute(_id, input) {
+      const workspacePath = sessionCwd;
+      if (!workspacePath) {
+        return {
+          content: [{ type: "text", text: "不知道当前工作区：无法整理" }],
+          details: { actions: 0, applied: 0, conflicts: [] },
+          isError: true,
+        };
+      }
+      const zones = await readProfileZones(workspacePath);
+      const plan = await planOrganization({ workspacePath, zones });
+      if (!input.apply) {
+        const lines = plan.actions.map((action) => `- ${action.reason}`);
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                plan.actions.length === 0
+                  ? "整理预览：没有需要改动的项。"
+                  : `整理预览（未执行）：\n${lines.join("\n")}`,
+            },
+          ],
+          details: { actions: plan.actions.length, applied: 0, conflicts: [] },
+        };
+      }
+
+      const result = await applyOrganization(workspacePath, plan);
+      const extras: string[] = [];
+      if (input.generateSkeletons) {
+        const criteria = await writeCriteriaSkeleton(workspacePath);
+        const profile = await writeProfileSkeleton(workspacePath, zones);
+        extras.push(
+          criteria.status === "written" ? "已生成判据骨架" : criteria.reason,
+          profile.status === "written" ? "已生成业务档案" : profile.reason,
+        );
+      }
+      if (input.initGit) {
+        const git = await initWorkspaceGit(workspacePath);
+        extras.push(
+          git.status === "created"
+            ? "已初始化 git"
+            : git.status === "present"
+              ? "已在版本控制中"
+              : `未初始化版本控制（${git.reason}）`,
+        );
+      }
+      const conflictNote =
+        result.conflicts.length > 0
+          ? `；${result.conflicts.length} 项未执行：${result.conflicts.map((entry) => entry.reason).join("；")}`
+          : "";
+      return {
+        content: [
+          {
+            type: "text",
+            text: `整理已执行 ${result.applied.length} 项${conflictNote}${
+              extras.length > 0 ? `；${extras.join("；")}` : ""
+            }`,
+          },
+        ],
+        details: {
+          actions: plan.actions.length,
+          applied: result.applied.length,
+          conflicts: result.conflicts.map((entry) => entry.reason),
+        },
       };
     },
   });
