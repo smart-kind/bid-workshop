@@ -1,5 +1,3 @@
 {
-  "extensions": [
-    "/Users/david/_projects/1_company/ai-projects/bid-workshop-new/extensions/bid-review/index.ts"
-  ]
+  "extensions": ["../../extensions/bid-review/index.ts"]
 }

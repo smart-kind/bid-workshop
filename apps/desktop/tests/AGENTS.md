@@ -19,7 +19,7 @@ Apply these rules under `apps/desktop/tests/`.
 - `pasteTinyPng()` proves the renderer paste handler and is suitable for background/core coverage.
 - `pasteTinyPngViaClipboard()` proves real Electron clipboard paste and belongs in foreground/native coverage.
 - Native failures can be environmental. Before treating a native failure as a product regression, rerun with a clean foreground window and no competing keyboard or mouse input.
-- Report which evidence actually ran: fixture-backed Electron, deterministic runtime integration, real-provider conversation, native OS, or packaged artifact. For visible conversation proof without injected events, use the checked-in [verify-pi-gui skill](../../../.agents/skills/verify-pi-gui/SKILL.md); its settings smoke is not conversation proof.
+- Report which evidence actually ran: fixture-backed Electron, deterministic runtime integration, real-provider conversation, native OS, or packaged artifact. For visible conversation proof without injected events, `docs/workspace-redesign-verification.md` records the recipe and its retained evidence; a settings smoke is not conversation proof.
 - Real-auth `live` specs must opt in explicitly via `PI_APP_REAL_AUTH=1` plus `PI_APP_REAL_AUTH_SOURCE_DIR=/absolute/path/to/agent`; raw spec discovery may skip without these, but an explicitly requested live lane must fail preflight rather than report an all-skipped success.
 
 ## Flaky tests

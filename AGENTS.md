@@ -15,7 +15,6 @@ Bid Workshop is a desktop application for AI-powered bid/tender document review.
 - `packages/` — Core framework packages (forked from pi-gui)
 - `extensions/` — Desktop extensions (bid review, etc.)
 - `vendor/` — Vendored genoffice packages
-- `skills/` — Custom Pi skills
 
 ## Workflow
 

@@ -35,18 +35,18 @@ genoffice 的价值在于它的 docx-engine：能解析 .docx、能渲染、能�
 
 **组件来源：**
 
-| 能力                                        | 来源                              | 位置                                           | 状态                              |
-| ------------------------------------------- | --------------------------------- | ---------------------------------------------- | --------------------------------- |
-| Electron 桌面壳 + AI Agent                  | pi-gui fork                       | `apps/desktop/`                                | ✅ 已引入                         |
-| Word 文档解析                               | genoffice `file-parse`            | `vendor/genoffice/file-parse` (symlink)        | ✅ 已引入（仅纯文本提取）         |
-| Word 渲染/编辑/批注                         | genoffice `docx-engine`           | `vendor/genoffice/docx-engine` (symlink)       | ✅ 已引入（**但项目代码零引用**） |
-| HTML→DOCX 转换                              | genoffice `html2docx`             | `vendor/genoffice/html2docx` (symlink)         | ✅ 已引入                         |
-| 字体度量                                    | genoffice `font-metrics`          | `vendor/genoffice/font-metrics` (symlink)      | ✅ 已引入                         |
-| 国际化                                      | genoffice `i18n`                  | `vendor/genoffice/i18n` (symlink)              | ✅ 已引入                         |
-| 幻灯片引擎                                  | genoffice `pptx-engine`           | `vendor/genoffice/pptx-engine` (symlink)       | ✅ 已引入（上一版本文档漏记）     |
-| **工作空间模型 + 文档/批注工具 + 审查工具** | **genoffice `workspace-harness`** | `vendor/genoffice/workspace-harness`（已入库） | ✅ 已引入（子路径取用）           |
-| 无头文档 CLI（调试用）                      | genoffice `cli`                   | 未引入（上游 `packages/cli`，bin `genoffice`） | ❌ 未引入                         |
-| 标书审查业务逻辑                            | 本项目                            | `extensions/bid-review/`                       | ✅ 已实现（第 2–4 步）            |
+| 能力                                        | 来源                              | 位置                                           | 状态                                                                          |
+| ------------------------------------------- | --------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------- |
+| Electron 桌面壳 + AI Agent                  | pi-gui fork                       | `apps/desktop/`                                | ✅ 已引入                                                                     |
+| Word 文档解析                               | genoffice `file-parse`            | `vendor/genoffice/file-parse` (symlink)        | ✅ 已引入（仅纯文本提取）                                                     |
+| Word 渲染/编辑/批注                         | genoffice `docx-engine`           | `vendor/genoffice/docx-engine` (symlink)       | ✅ 已引入，且已被引用（`extensions/bid-review/parser-docx.mjs` 是唯一适配层） |
+| HTML→DOCX 转换                              | genoffice `html2docx`             | `vendor/genoffice/html2docx` (symlink)         | ✅ 已引入                                                                     |
+| 字体度量                                    | genoffice `font-metrics`          | `vendor/genoffice/font-metrics` (symlink)      | ✅ 已引入                                                                     |
+| 国际化                                      | genoffice `i18n`                  | `vendor/genoffice/i18n` (symlink)              | ✅ 已引入                                                                     |
+| 幻灯片引擎                                  | genoffice `pptx-engine`           | `vendor/genoffice/pptx-engine` (symlink)       | ✅ 已引入（上一版本文档漏记）                                                 |
+| **工作空间模型 + 文档/批注工具 + 审查工具** | **genoffice `workspace-harness`** | `vendor/genoffice/workspace-harness`（已入库） | ✅ 已引入（子路径取用）                                                       |
+| 无头文档 CLI（调试用）                      | genoffice `cli`                   | 未引入（上游 `packages/cli`，bin `genoffice`） | ❌ 未引入                                                                     |
+| 标书审查业务逻辑                            | 本项目                            | `extensions/bid-review/`                       | ✅ 已实现（第 2–4 步）                                                        |
 
 `vendor/genoffice/` 下的包**源码已直接入库并纳入版本控制**（不再是软链），所以
 `git clone && pnpm install && pnpm build` 在任何人、任何机器上都跑得通，不需要上游 checkout。
@@ -303,22 +303,22 @@ CLI 层的 `add_comment` 描述正是上一版写的那个锚定语义：
 > 上一版的现状表**不可用**。它是对着 GitHub 上的提交写的，而本项目大量工作当时还躺在本地未提交，
 > 因此它把「已实现」误记为「未做」。下表是核对本地工作树后的实际状态。
 
-| 项目                                  | 状态                                                                                                |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| pi-gui 壳 fork 到 bid-workshop        | ✅ 已完成                                                                                           |
-| 品牌改名 + 移除无关模块               | ✅ 已完成                                                                                           |
-| **项目自足性（clone 即可编译）**      | ✅ **已解决**：genoffice 源码已入库并纳入版本控制，不再依赖本机软链，见下节                         |
-| GitHub 仓库 (smart-kind/bid-workshop) | ✅ 已创建并推送，分支 `main`，**公开仓库**                                                          |
-| bid-review 扩展                       | ✅ 已实现（mock 已被真实链路替换）                                                                  |
-| workspace-harness 复用通道            | ✅ 已打通（子路径 exports，实测可 import）                                                          |
-| **样例标书 .docx**                    | ✅ 已完成（`workspaces/bid-sample/投标文件-某软件科技.docx`，含 6 个埋点）                          |
-| 评审条件                              | ✅ 已完成（`workspaces/bid-sample/评审条件.md`）                                                    |
-| **文档加载链路**（docx → 结构化数据） | ✅ 已完成（`document.ts` + `parser-docx.mjs`，实测解析真实文档通过）                                |
-| 期望输出（带批注的 .docx）            | ❌ 未做                                                                                             |
-| manifest.json                         | ❌ 未做                                                                                             |
-| AI 审查逻辑                           | ✅ 已完成（`review.ts` + `bid_record_findings`，模型执行审查）                                      |
-| Word 批注输出                         | ❌ 未做。机制已验证可行，未接进产品                                                                 |
-| UI 集成                               | ⚠️ 面板已在真实 Electron 中跑通（加载真实 .docx + 展示解析结果，有 core lane 回归）；右侧文档区未接 |
+| 项目                                  | 状态                                                                                                            |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| pi-gui 壳 fork 到 bid-workshop        | ✅ 已完成                                                                                                       |
+| 品牌改名 + 移除无关模块               | ✅ 已完成                                                                                                       |
+| **项目自足性（clone 即可编译）**      | ✅ **已解决**：genoffice 源码已入库并纳入版本控制，不再依赖本机软链，见下节                                     |
+| GitHub 仓库 (smart-kind/bid-workshop) | ✅ 已创建并推送，分支 `main`，**公开仓库**                                                                      |
+| bid-review 扩展                       | ✅ 已实现（mock 已被真实链路替换）                                                                              |
+| workspace-harness 复用通道            | ✅ 已打通（子路径 exports，实测可 import）                                                                      |
+| **样例标书 .docx**                    | ✅ 已完成（`workspaces/bid-sample/投标文件-某软件科技.docx`，含 6 个埋点）                                      |
+| 评审条件                              | ✅ 已完成（`workspaces/bid-sample/评审条件.md`）                                                                |
+| **文档加载链路**（docx → 结构化数据） | ✅ 已完成（`document.ts` + `parser-docx.mjs`，实测解析真实文档通过）                                            |
+| 期望输出（带批注的 .docx）            | ❌ 未做                                                                                                         |
+| manifest.json                         | ❌ 未做                                                                                                         |
+| AI 审查逻辑                           | ✅ 已完成（`review.ts` + `bid_record_findings`，模型执行审查）                                                  |
+| Word 批注输出                         | ✅ 已做（`extensions/bid-review`：工作副本 `<原名>-批注.docx`，批注可回读；扩展自身的 lane 有真实样例往返断言） |
+| UI 集成                               | ⚠️ 面板已在真实 Electron 中跑通（加载真实 .docx + 展示解析结果，有 core lane 回归）；右侧文档区未接             |
 
 **bid-review 已有的实际代码**（已提交，`36d94cf`）：
 

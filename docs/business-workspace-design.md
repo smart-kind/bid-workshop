@@ -67,7 +67,7 @@
 另有两处**与既有文档不一致**，写新设计时不要按旧文档行事：
 
 - `docs/plan.md` 的"当前状态"表说"Word 批注输出 ❌ 未做"——**已实现**（`bid_write_comments` + `parser-docx.mjs`）；同表说 docx-engine"零引用"——**已引用**。
-- `README.md:35` 与 `AGENTS.md` 提到根级 `skills/` 目录、`docs/` 引用 `.agents/skills/verify-pi-gui/SKILL.md`——**当前 checkout 里都不存在**。不要把"已有 skills 目录"当既成事实。
+- 根级 `skills/` 目录、`.agents/skills/verify-pi-gui/` 在**当前 checkout 里都不存在**（T-32 已订正 README / AGENTS / docs 里的过时引用）。不要把"已有 skills 目录"当既成事实。
 - `workspaces/*/.pi/settings.json` 里的扩展路径是**环境相关的绝对路径**，指向另一个 checkout 而不是本仓库相对路径——换机器或重新 clone 之后必须改，否则扩展加载不上。
 
 ## 2. 术语表：先界定，再设计

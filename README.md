@@ -32,7 +32,6 @@ bid-workshop/
 ├── examples/              # 扩展开发示例
 │   └── desktop-extensions/
 │       └── pr-review/     # PR 审查扩展（参考实现）
-└── skills/                # 自定义 Pi 技能
 ```
 
 ## 技术选型决策

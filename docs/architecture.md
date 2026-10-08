@@ -128,7 +128,7 @@ The root commands make that ownership explicit: `marketing:media` records the RE
 
 ## Proof
 
-Use [baseline checks](ci-baseline.md), [desktop lane commands](../apps/desktop/README.md), and the [verification skill](../.agents/skills/verify-pi-gui/SKILL.md). `check:architecture` enforces renderer, contract-authority, and host dependency rules. `test:guards` includes rejected fixtures for those boundaries and state-owner access.
+Use [baseline checks](ci-baseline.md) and the [desktop lane commands](../apps/desktop/README.md). `check:architecture` enforces renderer, contract-authority, and host dependency rules. `test:guards` includes rejected fixtures for those boundaries and state-owner access.
 
 Report evidence at its actual level: static/type checks, unit tests, fixture-backed Electron, deterministic runtime integration, real-provider conversation, native OS behavior, or packaged artifact. Desktop user flows are complete only after the affected surface runs in Electron. A settings smoke, skipped provider test, or passing package build does not prove conversation behavior.
 

@@ -235,7 +235,7 @@ P0.0–P0.2 are the previously verified baseline. P0.3/P0.4/P1.1/P1.2 are **impl
 
 The implementation followed the upgrade → workspace → review/capture → extension-host order, and the final gates above passed. P2 remains a separate product scope. Later Pi upgrades remain focused compatibility changes; capture, transcript identity and discovery hooks are explicit compatibility boundaries.
 
-Use the existing [verification skill](../.agents/skills/verify-pi-gui/SKILL.md) and [baseline](ci-baseline.md). `pnpm check` is the baseline; targeted desktop specs go through the existing `test:e2e:runner` or named Core scripts. Extend the existing `workspace-files`, `changed-files`, `integrated-terminal`, `composer-draft-sync`, `multi-window`, persistence/reopen, extension-dialog/dock/reload/isolation and worktree coverage. Add deterministic checkpoint and bridge integration fixtures. Then run the real-provider conversation/maintenance recipes with an isolated profile. Packaging/native behavior has its own proof; it is not established by browser prototypes or Core fixtures.
+Use the [baseline](ci-baseline.md). `pnpm check` is the baseline; targeted desktop specs go through the existing `test:e2e:runner` or named Core scripts. Extend the existing `workspace-files`, `changed-files`, `integrated-terminal`, `composer-draft-sync`, `multi-window`, persistence/reopen, extension-dialog/dock/reload/isolation and worktree coverage. Add deterministic checkpoint and bridge integration fixtures. Then run the real-provider conversation/maintenance recipes with an isolated profile. Packaging/native behavior has its own proof; it is not established by browser prototypes or Core fixtures.
 
 ## Migration and enforcement
 
