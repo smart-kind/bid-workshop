@@ -11,8 +11,7 @@
     "@bid-workshop/extension-ui": "workspace:*"
   },
   "dependencies": {
-    "@genoffice/docx-engine": "workspace:*",
-    "@genoffice/workspace-harness": "workspace:*"
+    "@genoffice/docx-engine": "workspace:*"
   },
   "scripts": {
     "build": "node build.mjs",

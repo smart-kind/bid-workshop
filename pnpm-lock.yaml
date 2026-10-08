@@ -362,9 +362,6 @@ importers:
       '@genoffice/docx-engine':
         specifier: workspace:*
         version: link:../../vendor/genoffice/docx-engine
-      '@genoffice/workspace-harness':
-        specifier: workspace:*
-        version: link:../../vendor/genoffice/workspace-harness
     devDependencies:
       '@playwright/test':
         specifier: '*'

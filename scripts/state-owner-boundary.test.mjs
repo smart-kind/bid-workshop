@@ -120,6 +120,24 @@ test("desktop state owners expose only their bounded operation ports", () => {
   }
 });
 
+test("the atomic writer's owners stay the modules that own a durable file", () => {
+  // A new durable file has to be registered here on purpose: an entry added or
+  // dropped by accident would otherwise pass unnoticed, and the module that
+  // writes it would stop being checked.
+  const entry = durableStateOwners.find(({ token }) => token.test("writeFileAtomicQueued"));
+  assert.ok(entry, "the atomic writer is registered");
+  assert.deepEqual(entry.owners, [
+    "apps/desktop/electron/persistence/atomic-file-write.ts",
+    "apps/desktop/electron/persistence/app-store-persistence.ts",
+    "apps/desktop/electron/persistence/attachment-store.ts",
+    "apps/desktop/electron/artifacts/artifact-store.ts",
+    "apps/desktop/electron/scheduled-tasks/scheduled-task-store.ts",
+    "apps/desktop/electron/workspace/workspace-profile.ts",
+    reviewedStore,
+    checkpointStore,
+  ]);
+});
+
 test("the state-owner guard rejects durable review and checkpoint state outside its owners", () => {
   assert.deepEqual(
     durableStateViolations(
