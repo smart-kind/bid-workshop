@@ -12,6 +12,7 @@ import {
   loadBidDocument,
   setBidCommentWriter,
   setBidDocumentParser,
+  type BidComment,
   type BidCommentAnchor,
   type LoadedBid,
 } from "./document";
@@ -218,6 +219,17 @@ async function documentFingerprint(filePath: string): Promise<string> {
 }
 
 /** The goal the workspace's profile declares, when it declares one. */
+/** What the working copy already says, when a previous round wrote it. */
+async function readPreviousComments(): Promise<readonly BidComment[] | undefined> {
+  if (!lastWorkingCopy) return undefined;
+  try {
+    const parsed = await docxParser.parse(lastWorkingCopy);
+    return parsed.parsed.comments.length > 0 ? parsed.parsed.comments : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function readDeclaredGoal(): Promise<string | undefined> {
   const workspacePath = sessionCwd;
   if (!workspacePath) return undefined;
@@ -350,7 +362,14 @@ export default function bidReview(pi: ExtensionAPI) {
         if (!doc || !bid) continue;
         reviewingBids.set(fileId, { doc, bid });
         briefs.push(
-          buildReviewBrief(doc, bid, readCriteria(doc.path), TEXT_BUDGET, await readDeclaredGoal()),
+          buildReviewBrief(
+            doc,
+            bid,
+            readCriteria(doc.path),
+            TEXT_BUDGET,
+            await readDeclaredGoal(),
+            await readPreviousComments(),
+          ),
         );
       }
 
@@ -799,6 +818,7 @@ export default function bidReview(pi: ExtensionAPI) {
                   readCriteria(doc.path),
                   TEXT_BUDGET,
                   await readDeclaredGoal(),
+                  await readPreviousComments(),
                 ),
               );
             }

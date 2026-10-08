@@ -49,3 +49,20 @@ test("says so when no goal was declared instead of leaving it blank", () => {
   expect(brief).toContain("## 本次目标");
   expect(brief).toContain("工作区档案未声明目标");
 });
+
+test("carries what a previous round already raised", () => {
+  const previous = [
+    { id: "1", author: "审查", text: "报价与明细不符\n少了盖章页", done: true },
+    { id: "2", author: "应用", text: "已采纳：确认属实", parentId: "1" },
+  ];
+  const brief = buildReviewBrief(doc, bid, criteria, 1000, undefined, previous);
+
+  expect(brief).toContain("## 上一轮已经提过的");
+  expect(brief).toContain("#1［已处置］审查：报价与明细不符 少了盖章页");
+  expect(brief).toContain("#2［未处置］应用（回复 #1）：已采纳：确认属实");
+});
+
+test("leaves the section out when there is no previous round", () => {
+  expect(buildReviewBrief(doc, bid, criteria, 1000)).not.toContain("上一轮已经提过的");
+  expect(buildReviewBrief(doc, bid, criteria, 1000, "目标", [])).not.toContain("上一轮已经提过的");
+});

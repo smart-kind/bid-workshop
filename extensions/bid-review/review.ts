@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { BidDocument, BidIssue } from "./contract";
-import type { LoadedBid } from "./document";
+import type { BidComment, LoadedBid } from "./document";
 
 /** Review conditions file, looked up beside the document being reviewed. */
 export const CRITERIA_FILE = "评审条件.md";
@@ -76,6 +76,22 @@ export function toBidIssue(finding: FindingInput): BidIssue {
   return issue;
 }
 
+/**
+ * What a previous round left in the document, so this one builds on it instead
+ * of raising the same point again. A resolved comment is marked as such: it says
+ * the point was dealt with, not that it went away.
+ */
+export function describePreviousComments(comments: readonly BidComment[]): string {
+  return comments
+    .map((comment) => {
+      const state = comment.done ? "已处置" : "未处置";
+      const reply = comment.parentId ? `（回复 #${comment.parentId}）` : "";
+      const text = comment.text.replace(/\s+/g, " ").slice(0, 200);
+      return `- #${comment.id}［${state}］${comment.author || "未知作者"}${reply}：${text}`;
+    })
+    .join("\n");
+}
+
 const SEVERITY_LABEL: Record<BidIssue["severity"], string> = {
   critical: "严重",
   warning: "警告",
@@ -102,6 +118,8 @@ export function buildReviewBrief(
   textBudget: number,
   /** The goal the workspace declared, when it has one. */
   goal?: string,
+  /** What the document already says, so a later round does not repeat itself. */
+  previousComments?: readonly BidComment[],
 ): string {
   const truncated = bid.text.length > textBudget;
   const body = truncated ? `${bid.text.slice(0, textBudget)}\n……（正文过长，已截断）` : bid.text;
@@ -120,6 +138,9 @@ export function buildReviewBrief(
     "",
     criteria.text,
     "",
+    ...(previousComments && previousComments.length > 0
+      ? ["## 上一轮已经提过的", describePreviousComments(previousComments), ""]
+      : []),
     "## 投标文件正文",
     `（${bid.blockCount} 个块，${bid.tableCount} 张表；块序号按正文顺序从 0 开始，用于定位）`,
     "",
