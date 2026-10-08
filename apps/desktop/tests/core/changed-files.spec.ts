@@ -102,8 +102,10 @@ test("shows Git status as unavailable without losing reviewed files", async () =
     await rename(gitPath, unavailableGitPath);
     gitMoved = true;
     await diffPanel.locator('button[aria-label="Refresh"]').click();
+    // The panel says what it cannot do in its own words; git's stderr is not a
+    // sentence for the person who opened the folder.
     await expect(diffPanel.getByTestId("changed-files-unavailable")).toContainText(
-      /not a git repository|unavailable/i,
+      /not under version control/i,
     );
     await expect(diffPanel.getByText("No changes", { exact: true })).toHaveCount(0);
     await saveProof(window, "git-status-unavailable.png");

@@ -127,8 +127,8 @@ test("adds singleton tool tabs, closes to a neighbor, and keeps an empty chooser
     await selectSession(window, TASK_A);
     await expect(window.getByTestId("workbench")).toHaveCount(0);
     await openWorkbench(window);
-    await expectActiveTool(window, "Review");
-    await addTool(window, "Files");
+    // The workbench opens on the file tree; the diff is a second step.
+    await expectActiveTool(window, "Files");
     await expect(window.getByTestId("file-workbench")).toBeVisible();
     await window.locator('.file-workbench__tree-row--file[data-file-path="alpha.txt"]').click();
     await expect(window.getByTestId("file-workbench-preview")).toContainText("Alpha target line");
@@ -152,17 +152,17 @@ test("adds singleton tool tabs, closes to a neighbor, and keeps an empty chooser
     await captureToolWidths(harness, window, testInfo, "Review");
     await expect(
       window.getByRole("tablist", { name: "Workspace tools" }).getByRole("tab"),
-    ).toHaveText(["Review", "Files", "Terminal"]);
+    ).toHaveText(["Files", "Terminal", "Review"]);
     await addTool(window, "Terminal");
     await expect(
       window.getByRole("tablist", { name: "Workspace tools" }).getByRole("tab"),
     ).toHaveCount(3);
 
+    await window.getByRole("button", { name: "Close Review tab", exact: true }).click();
+    await expectActiveTool(window, "Terminal");
     await window.getByRole("button", { name: "Close Terminal tab", exact: true }).click();
     await expectActiveTool(window, "Files");
     await window.getByRole("button", { name: "Close Files tab", exact: true }).click();
-    await expectActiveTool(window, "Review");
-    await window.getByRole("button", { name: "Close Review tab", exact: true }).click();
     await expect(window.getByTestId("workbench-chooser")).toBeVisible();
     await expect(
       window.getByRole("tablist", { name: "Workspace tools" }).getByRole("tab"),
@@ -204,8 +204,8 @@ test("restores each task's tabs and draft through Settings, switching, and resta
     await selectSession(window, TASK_B);
     await expect(window.getByTestId("workbench")).toHaveCount(0);
     await openWorkbench(window);
-    await expectActiveTool(window, "Review");
-    await expect(window.getByRole("tab", { name: "Files", exact: true })).toHaveCount(0);
+    await expectActiveTool(window, "Files");
+    await expect(window.getByRole("tab", { name: "Review", exact: true })).toHaveCount(0);
     await addTool(window, "Terminal");
     await window.getByTestId("composer").fill("Draft for task B");
     await window.keyboard.press(desktopShortcut(","));
@@ -299,7 +299,7 @@ test("an invalid or orphaned task layout does not block other saved UI state", a
     await expectActiveTool(window, "Terminal");
     await expect(
       window.getByRole("tablist", { name: "Workspace tools" }).getByRole("tab"),
-    ).toHaveText(["Review", "Terminal"]);
+    ).toHaveText(["Files", "Terminal"]);
     await expect(window.getByTestId("composer")).toHaveValue("Draft for task B");
     await expect.poll(async () => Object.keys(await savedLayouts())).toEqual([layoutB]);
     await selectSession(window, TASK_A);
@@ -365,7 +365,7 @@ test("closing the Terminal view preserves its live shell", async () => {
     await expect(terminal.locator(".xterm-rows")).toContainText("SHELL_READY");
     await window.getByRole("button", { name: "Close Terminal tab", exact: true }).click();
     await expect(terminal).toHaveCount(0);
-    await expectActiveTool(window, "Review");
+    await expectActiveTool(window, "Files");
     await addTool(window, "Terminal");
     await terminal.locator(".xterm").click();
     await window.keyboard.type("printf 'SHELL_%s\\n' \"$PI_GUI_WORKBENCH_CANARY\"");
