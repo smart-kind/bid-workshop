@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { defineFacet } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -14,6 +16,16 @@ import {
   type LoadedBid,
 } from "./document";
 import { describeWorkingCopyFailure, writeBidWorkingCopy } from "./working-copy";
+import {
+  buildLedger,
+  disposeFinding,
+  dispositionProgress,
+  runHeader,
+  type DispositionProgress,
+  type FindingInput as LedgerFindingInput,
+  type FindingLocation,
+  type Ledger,
+} from "./ledger";
 import { docxCommentWriter, docxParser } from "./parser-docx.mjs";
 import {
   buildReviewBrief,
@@ -133,6 +145,53 @@ async function ingestDocument(inputPath: string): Promise<BidDocument> {
   };
   loadedBids.set(loaded.id, bid);
   return loaded;
+}
+
+/** The ledger of the latest run: the record dispositions are written into. */
+let currentLedger: Ledger | null = null;
+
+/**
+ * The submitted finding as a ledger entry. Until the tool's own schema carries a
+ * verdict, everything recorded is a problem — which is what makes `problem`
+ * required here rather than optional.
+ */
+function toLedgerInput(finding: {
+  id: string;
+  severity: string;
+  category: string;
+  title: string;
+  description: string;
+  section?: string;
+  blockIndex?: number;
+  quote?: string;
+  basis?: string;
+  suggestion?: string;
+}): LedgerFindingInput {
+  const location: FindingLocation = {};
+  if (finding.section !== undefined) location.section = finding.section;
+  if (finding.blockIndex !== undefined) location.blockIndex = finding.blockIndex;
+  if (finding.quote !== undefined) location.quote = finding.quote;
+  return {
+    id: finding.id,
+    severity: finding.severity,
+    check: finding.basis ?? finding.category,
+    verdict: "not-satisfied",
+    problem: finding.title,
+    ...(finding.basis ? { basis: finding.basis } : {}),
+    ...(Object.keys(location).length > 0 ? { location } : {}),
+    ...(finding.suggestion ? { advice: finding.suggestion } : {}),
+  };
+}
+
+/** The document's content digest, so a run says which bytes it judged. */
+async function documentFingerprint(filePath: string): Promise<string> {
+  const bytes = await readFile(filePath);
+  return createHash("sha256").update(bytes).digest("hex").slice(0, 16);
+}
+
+/** A short digest of a file's text, for the criteria version a run used. */
+function fingerprintText(text: string): string {
+  return createHash("sha256").update(text).digest("hex").slice(0, 16);
 }
 
 function initialState(): BidReviewState {
@@ -288,6 +347,41 @@ export default function bidReview(pi: ExtensionAPI) {
     }),
     async execute(_id, input) {
       const issues = input.findings.map(toBidIssue);
+      const doc = snapshot.loadedFiles[snapshot.loadedFiles.length - 1];
+
+      // The ledger is built before anything is published: a submission that is
+      // not a usable record is reported instead of being half-stored.
+      let ledger: Ledger | null = null;
+      if (doc) {
+        const criteria = readCriteria(doc.path);
+        const header = runHeader({
+          runId: crypto.randomUUID(),
+          startedAt: new Date().toISOString(),
+          documentPath: doc.path,
+          documentFingerprint: await documentFingerprint(doc.path),
+          ...(criteria.path
+            ? {
+                criteria: {
+                  file: criteria.path,
+                  ...(criteria.text ? { fingerprint: fingerprintText(criteria.text) } : {}),
+                },
+              }
+            : {}),
+        });
+        try {
+          ledger = buildLedger(header, input.findings.map(toLedgerInput));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          publish({ ...snapshot, lastError: message });
+          return {
+            content: [{ type: "text", text: message }],
+            details: { count: 0, critical: 0, warning: 0, info: 0 },
+            isError: true,
+          };
+        }
+      }
+      currentLedger = ledger;
+
       publish({
         ...snapshot,
         reviewStatus: "done",
@@ -298,14 +392,70 @@ export default function bidReview(pi: ExtensionAPI) {
       });
       const counts = { critical: 0, warning: 0, info: 0 };
       for (const issue of issues) counts[issue.severity]++;
+      const progress = ledger ? dispositionProgress(ledger) : null;
       return {
         content: [
           {
             type: "text",
-            text: `已记录 ${issues.length} 条结论（严重 ${counts.critical} / 警告 ${counts.warning} / 提示 ${counts.info}）`,
+            text: `已记录 ${issues.length} 条结论（严重 ${counts.critical} / 警告 ${counts.warning} / 提示 ${counts.info}），${progress?.pending ?? 0} 条待处置`,
           },
         ],
-        details: { count: issues.length, ...counts },
+        details: { count: issues.length, ...counts, ...(progress ? { progress } : {}) },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "bid_dispose_finding",
+    label: "Dispose one review finding",
+    description:
+      "Record what happened to one finding of the latest review: accepted, rejected or back to pending. A rejection must say why",
+    parameters: Type.Object({
+      findingId: Type.String({ minLength: 1, description: "条目编号，例如 F-1" }),
+      disposition: Type.Union([
+        Type.Literal("pending"),
+        Type.Literal("accepted"),
+        Type.Literal("rejected"),
+      ]),
+      note: Type.Optional(Type.String({ description: "处置说明；驳回时必填" })),
+    }),
+    async execute(_id, input) {
+      if (!currentLedger) {
+        return {
+          content: [{ type: "text", text: "还没有台账：请先用 bid_record_findings 记录结论" }],
+          details: { disposed: 0, progress: null as DispositionProgress | null },
+          isError: true,
+        };
+      }
+      const result = disposeFinding(currentLedger, {
+        findingId: input.findingId,
+        disposition: input.disposition,
+        ...(input.note === undefined ? {} : { note: input.note }),
+      });
+      if (result.status === "refused") {
+        return {
+          content: [{ type: "text", text: result.reason }],
+          details: { disposed: 0, progress: dispositionProgress(currentLedger) },
+          isError: true,
+        };
+      }
+      currentLedger = result.ledger;
+      publish({ ...snapshot });
+      const { total, accepted, rejected, pending } = result.progress;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `${input.findingId} 已标记为${
+              input.disposition === "accepted"
+                ? "采纳"
+                : input.disposition === "rejected"
+                  ? "驳回"
+                  : "待定"
+            }；进度 ${accepted + rejected}/${total}（采纳 ${accepted} / 驳回 ${rejected} / 待定 ${pending}）`,
+          },
+        ],
+        details: { disposed: 1, progress: result.progress },
       };
     },
   });

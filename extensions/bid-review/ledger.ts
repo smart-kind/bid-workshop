@@ -44,6 +44,10 @@ export interface Finding {
   readonly problem?: string;
   readonly advice?: string;
   readonly disposition: FindingDisposition;
+  /** Who dispositioned it, when, and why — kept even for a rejection. */
+  readonly disposedBy?: string;
+  readonly disposedAt?: string;
+  readonly dispositionNote?: string;
   /** Stable digest of check + location + quote; see {@link findingFingerprint}. */
   readonly fingerprint: string;
 }
@@ -182,4 +186,86 @@ export function runHeader(input: {
     ...input,
     skills: input.skills ?? [],
   };
+}
+
+/** How a run's findings stand. Recomputed from the ledger, never tracked apart. */
+export interface DispositionProgress {
+  readonly total: number;
+  readonly pending: number;
+  readonly accepted: number;
+  readonly rejected: number;
+}
+
+export function dispositionProgress(ledger: Ledger): DispositionProgress {
+  const progress = { total: ledger.findings.length, pending: 0, accepted: 0, rejected: 0 };
+  for (const finding of ledger.findings) {
+    progress[finding.disposition] += 1;
+  }
+  return progress;
+}
+
+export interface DispositionRequest {
+  readonly findingId: string;
+  readonly disposition: FindingDisposition;
+  /** Required when rejecting: why it was rejected is what improves the criteria. */
+  readonly note?: string;
+  readonly by?: string;
+  readonly at?: string;
+}
+
+export type DispositionResult =
+  | { readonly status: "recorded"; readonly ledger: Ledger; readonly progress: DispositionProgress }
+  | { readonly status: "refused"; readonly reason: string };
+
+/**
+ * Move one finding to a disposition, recording who did it, when and why.
+ *
+ * Refused, rather than silently recorded, when: the finding is not in the
+ * ledger; the target is the disposition it already has (a no-op that would
+ * still look like a fresh decision); or it is a rejection with no reason.
+ */
+export function disposeFinding(ledger: Ledger, request: DispositionRequest): DispositionResult {
+  const index = ledger.findings.findIndex((finding) => finding.id === request.findingId);
+  if (index < 0) {
+    return { status: "refused", reason: `台账里没有编号为 ${request.findingId} 的条目` };
+  }
+  if (!FINDING_DISPOSITIONS.includes(request.disposition)) {
+    return { status: "refused", reason: `处置非法：${String(request.disposition)}` };
+  }
+  const current = ledger.findings[index];
+  if (!current) {
+    return { status: "refused", reason: `台账里没有编号为 ${request.findingId} 的条目` };
+  }
+  if (current.disposition === request.disposition) {
+    return {
+      status: "refused",
+      reason: `${request.findingId} 已经是${dispositionLabel(request.disposition)}，无需重复处置`,
+    };
+  }
+  const note = request.note?.trim();
+  if (request.disposition === "rejected" && !note) {
+    return { status: "refused", reason: "驳回必须写明理由：它是判据改进的输入" };
+  }
+
+  const updated: Finding = {
+    ...current,
+    disposition: request.disposition,
+    disposedBy: request.by?.trim() || current.disposedBy || "user",
+    disposedAt: request.at ?? new Date().toISOString(),
+    ...(note ? { dispositionNote: note } : {}),
+  };
+  const findings = [...ledger.findings];
+  findings[index] = updated;
+  const next: Ledger = { header: ledger.header, findings };
+  return { status: "recorded", ledger: next, progress: dispositionProgress(next) };
+}
+
+const DISPOSITION_LABELS: Readonly<Record<FindingDisposition, string>> = {
+  pending: "待定",
+  accepted: "已采纳",
+  rejected: "已驳回",
+};
+
+export function dispositionLabel(disposition: FindingDisposition): string {
+  return DISPOSITION_LABELS[disposition];
 }
