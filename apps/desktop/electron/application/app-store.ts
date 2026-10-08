@@ -141,6 +141,7 @@ import {
   extensionNoticeTimerId,
   removeExtensionNotice,
 } from "../extensions/extension-notices";
+import { askUnansweredNotice, type AskUnansweredReason } from "../../contracts/ask";
 import { appWorktreeRootMatcher } from "../platform/worktrees/app-worktree-roots";
 import { GitWorktreeManager } from "../platform/worktrees/worktree-manager";
 import { createWorkspaceOwner, type WorkspaceOwner } from "../workspace/app-store-workspace";
@@ -3034,7 +3035,7 @@ export class DesktopAppStore {
 
   async cancelPendingDialogsForSession(
     sessionRef: SessionRef,
-    options: { readonly force?: boolean } = {},
+    options: { readonly force?: boolean; readonly reason?: AskUnansweredReason } = {},
   ): Promise<void> {
     if (!options.force && this.shouldKeepSessionDialogs(sessionRef)) {
       return;
@@ -3049,6 +3050,7 @@ export class DesktopAppStore {
     uiState.pendingDialogs = [];
     for (const dialog of pendingDialogs) {
       this.clearExtensionDialogTimeout(sessionRef, dialog.requestId);
+      this.recordUnansweredAsk(sessionRef, dialog.requestId, options.reason ?? "session-changed");
     }
     this.state = this.syncDerivedSessionState(
       {
@@ -3085,7 +3087,10 @@ export class DesktopAppStore {
 
     await Promise.all(
       pendingSessionRefs.map((sessionRef) =>
-        this.cancelPendingDialogsForSession(sessionRef, { force: true }),
+        this.cancelPendingDialogsForSession(sessionRef, {
+          force: true,
+          reason: "window-closed",
+        }),
       ),
     );
   }
@@ -3391,6 +3396,21 @@ export class DesktopAppStore {
     return true;
   }
 
+  /**
+   * Say plainly that a question went unanswered, instead of letting the prompt
+   * vanish with no trace of what happened to it.
+   */
+  private recordUnansweredAsk(
+    sessionRef: SessionRef,
+    requestId: string,
+    reason: AskUnansweredReason,
+  ): void {
+    this.addExtensionNotice(
+      sessionRef,
+      askUnansweredNotice(reason, requestId, new Date().toISOString()),
+    );
+  }
+
   /** Notices share the dialog timer map, so session reset and close clear both. */
   private addExtensionNotice(sessionRef: SessionRef, notice: SessionExtensionNoticeRecord): void {
     const dropped = appendExtensionNotice(this.getOrCreateExtensionUiState(sessionRef), notice);
@@ -3430,7 +3450,9 @@ export class DesktopAppStore {
     const timerKey = this.extensionDialogTimeoutKey(sessionRef, dialog.requestId);
     const timer = setTimeout(() => {
       this.extensionDialogTimeoutTimers.delete(timerKey);
-      this.removePendingExtensionDialog(sessionRef, dialog.requestId);
+      if (this.removePendingExtensionDialog(sessionRef, dialog.requestId)) {
+        this.recordUnansweredAsk(sessionRef, dialog.requestId, "timeout");
+      }
     }, dialog.timeoutMs);
     this.extensionDialogTimeoutTimers.set(timerKey, timer);
   }
