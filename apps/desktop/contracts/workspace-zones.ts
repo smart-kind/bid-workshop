@@ -14,6 +14,8 @@
 import {
   READ_ONLY_WORKSPACE_ZONES,
   WORKSPACE_ZONE_KINDS,
+  type WorkspaceContext,
+  type WorkspaceProfile,
   type WorkspaceZoneKind,
   type WorkspaceZones,
 } from "./business-workspace";
@@ -89,6 +91,23 @@ export function createZoneResolver(zones: WorkspaceZones): WorkspaceZoneResolver
         );
       }
     },
+  };
+}
+
+/**
+ * The serializable context a decoded profile projects: what the workspace is,
+ * which directories are zoned, and the enable-list/delivery defaults.
+ */
+export function deriveWorkspaceContext(profile: WorkspaceProfile): WorkspaceContext {
+  return {
+    business: profile.business,
+    ...(profile.name === undefined ? {} : { name: profile.name }),
+    ...(profile.goal === undefined ? {} : { goal: profile.goal }),
+    zones: profile.zones,
+    zoned: createZoneResolver(profile.zones).isZoned,
+    skills: profile.skills,
+    mcp: profile.capabilities.mcp,
+    delivery: profile.delivery,
   };
 }
 

@@ -62,6 +62,25 @@ export const DEFAULT_WORKSPACE_DELIVERY: WorkspaceDelivery = {
   criteriaFile: "评审条件.md",
 };
 
+/**
+ * What the rest of the app derives from a profile: the business type, the zone
+ * declarations, the skill enable-list, the referenced MCP servers and the
+ * delivery defaults. Serializable, so the main process can project it to the
+ * renderer without shipping the resolver.
+ */
+export interface WorkspaceContext {
+  readonly business: string;
+  readonly name?: string;
+  readonly goal?: string;
+  readonly zones: WorkspaceZones;
+  /** False when no directory is declared: the workspace is flat. */
+  readonly zoned: boolean;
+  readonly skills: readonly string[];
+  /** `.pi/mcp.json` server names this workspace references. */
+  readonly mcp: readonly string[];
+  readonly delivery: WorkspaceDelivery;
+}
+
 const MAX_TEXT_LENGTH = 4096;
 const MAX_LIST_ITEMS = 512;
 

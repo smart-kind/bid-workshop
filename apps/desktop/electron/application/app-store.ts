@@ -90,6 +90,7 @@ import {
   writePersistedUiState,
 } from "../persistence/app-store-persistence";
 import { AttachmentStore } from "../persistence/attachment-store";
+import { WorkspaceProfileOwner, type WorkspaceProfileState } from "../workspace/workspace-profile";
 import {
   type PendingRuntimeCommandExecution,
   getLearnedCommandCompatibility,
@@ -248,6 +249,7 @@ export class DesktopAppStore {
   private readonly scheduledTasksFilePath: string;
   private scheduledTasksWritable = false;
   private readonly attachmentStore: AttachmentStore;
+  private readonly workspaceProfile = new WorkspaceProfileOwner();
   private readonly sessionState = new SessionStateMap();
   private readonly taskWorkbenchTemplatesBySession = new Map<string, TaskWorkbenchTemplate>();
   private readonly runtimeByWorkspace = new Map<string, RuntimeSnapshot>();
@@ -868,6 +870,16 @@ export class DesktopAppStore {
 
   getWorkspacePath(workspaceId: string): string | undefined {
     return this.state.workspaces.find((w) => w.id === workspaceId)?.path;
+  }
+
+  /**
+   * The business profile of an open workspace, or `undefined` when the workspace
+   * is not open. Never throws: a broken profile is reported as its own state so
+   * the folder still opens.
+   */
+  async readWorkspaceProfile(workspaceId: string): Promise<WorkspaceProfileState | undefined> {
+    const path = this.getWorkspacePath(workspaceId);
+    return path === undefined ? undefined : this.workspaceProfile.read(path);
   }
 
   /** The current folders and their threads, for checks that must not wait on a state copy. */
