@@ -105,6 +105,16 @@ test("a .docx opened from the Files tree renders in the hosted document view", a
       expect(bounds.height).toBeGreaterThan(0);
     }
 
+    // --- the editor's built-in AI panel starts hidden, and its own toggle opens it ---
+    const aiDock = documentView.locator(".ai-dock");
+    await expect(aiDock).toHaveClass(/collapsed/, { timeout: 15_000 });
+    // The first `.ai-entry` is the assistant's own toggle; the other three are
+    // one-shot actions that share the class.
+    await documentView.locator("button.ai-entry").first().click();
+    await expect(aiDock).not.toHaveClass(/collapsed/);
+    const expanded = await aiDock.boundingBox();
+    expect(expanded?.width ?? 0).toBeGreaterThan(0);
+
     // --- selecting another file detaches the host from the pane ---
     await tree.locator('.file-workbench__tree-row--file[data-file-path="README.md"]').click();
     await expect

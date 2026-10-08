@@ -16,6 +16,29 @@ import { DOCUMENT_IPC } from "./documents/document-channels";
  * missing-member TypeError. Save, print, export, AI, Zotero, MCP and recovery
  * features are inert until they get a real host.
  */
+// The hosted editor's own AI panel starts hidden. This app never wires it to a
+// provider, so an open panel would offer something that cannot work. It is a
+// presentation default, not a boundary: the editor's own toggle turns it back
+// on, and the reader's own preference is respected when they already set one.
+try {
+  // Typed by hand: this preload's project has no DOM library, and the storage
+  // belongs to the document's own origin.
+  const storage = (
+    globalThis as {
+      localStorage?: {
+        getItem(key: string): string | null;
+        setItem(key: string, value: string): void;
+      };
+    }
+  ).localStorage;
+  if (storage && storage.getItem("aidocs.showAi") === null) {
+    storage.setItem("aidocs.showAi", "0");
+  }
+} catch {
+  // Storage can be unavailable (for example on a locked-down profile); the
+  // editor then falls back to its own default rather than failing to boot.
+}
+
 const noop = (): void => {};
 const unsubscribe = (): (() => void) => noop;
 
