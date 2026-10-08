@@ -9,6 +9,8 @@ import type { BidBodyBlock } from "./contract";
  */
 export interface BidRun {
   text: string;
+  /** Comments whose range covers this run; the writer tags runs with them. */
+  commentIds?: string[];
 }
 
 export interface BidCell {
@@ -26,6 +28,23 @@ export interface BidBlock {
 
 export interface BidParsedDocument {
   blocks: BidBlock[];
+  /** Comments already in the file, so a later run can read what the last one wrote. */
+  comments: BidComment[];
+}
+
+/** One comment as it exists in the document (Word's own model, not the ledger's). */
+export interface BidComment {
+  id: string;
+  author: string;
+  text: string;
+  /** ISO timestamp from the document, when it has one. */
+  date?: string;
+  /** The comment this answers, when it is a reply. */
+  parentId?: string;
+  /** Resolved: the writer marks a dispositioned finding this way. */
+  done?: boolean;
+  /** The `w14:paraId` of the comment's own last paragraph. */
+  paraId?: string;
 }
 
 /** A heading in the document, with the index of the block it lives in. */
@@ -129,6 +148,36 @@ export async function writeBidComments(input: {
     throw new Error("尚未注册批注写入器：无法写出批注");
   }
   return commentWriter.write(input);
+}
+
+/**
+ * Comments grouped by the block whose runs they cover, so a later run can say
+ * what the previous one raised about a passage. A comment whose runs cannot be
+ * found is reported under no block rather than guessed at.
+ */
+export function commentsByBlock(parsed: BidParsedDocument): {
+  readonly byBlock: ReadonlyMap<number, readonly BidComment[]>;
+  readonly unanchored: readonly BidComment[];
+} {
+  const comments = new Map(parsed.comments.map((comment) => [comment.id, comment]));
+  const byBlock = new Map<number, BidComment[]>();
+  const seen = new Set<string>();
+  parsed.blocks.forEach((block, index) => {
+    for (const run of block.runs ?? []) {
+      for (const id of run.commentIds ?? []) {
+        const comment = comments.get(String(id));
+        if (!comment) continue;
+        seen.add(comment.id);
+        const group = byBlock.get(index) ?? [];
+        group.push(comment);
+        byBlock.set(index, group);
+      }
+    }
+  });
+  return {
+    byBlock,
+    unanchored: parsed.comments.filter((comment) => !seen.has(comment.id)),
+  };
 }
 
 function blockText(block: BidBlock): string {

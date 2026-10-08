@@ -66,11 +66,28 @@ function toGenerated(block, anchored) {
   return generated;
 }
 
+/** The engine's comment model, narrowed to the fields the business model keeps. */
+function toBidComment(comment) {
+  const mapped = {
+    id: String(comment.id),
+    author: comment.author ?? "",
+    text: comment.text ?? "",
+  };
+  if (comment.date) mapped.date = comment.date;
+  if (comment.parentId) mapped.parentId = comment.parentId;
+  if (comment.done !== undefined) mapped.done = comment.done;
+  if (comment.paraId) mapped.paraId = comment.paraId;
+  return mapped;
+}
+
 export const docxParser = {
   async parse(filePath) {
     const bytes = await readFile(filePath);
     const parsed = await parseDocx(new Uint8Array(bytes));
-    return { parsed, size: bytes.byteLength };
+    return {
+      parsed: { ...parsed, comments: (parsed.comments ?? []).map(toBidComment) },
+      size: bytes.byteLength,
+    };
   },
 };
 

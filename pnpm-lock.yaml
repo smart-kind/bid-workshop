@@ -366,6 +366,9 @@ importers:
         specifier: workspace:*
         version: link:../../vendor/genoffice/workspace-harness
     devDependencies:
+      '@playwright/test':
+        specifier: '*'
+        version: 1.58.2
       '@types/node':
         specifier: '*'
         version: 24.12.2
