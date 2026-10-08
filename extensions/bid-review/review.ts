@@ -100,6 +100,8 @@ export function buildReviewBrief(
   bid: LoadedBid,
   criteria: CriteriaSource,
   textBudget: number,
+  /** The goal the workspace declared, when it has one. */
+  goal?: string,
 ): string {
   const truncated = bid.text.length > textBudget;
   const body = truncated ? `${bid.text.slice(0, textBudget)}\n……（正文过长，已截断）` : bid.text;
@@ -109,6 +111,9 @@ export function buildReviewBrief(
 
   return [
     `请审查这份投标文件：${doc.name}`,
+    ...(goal?.trim()
+      ? ["", "## 本次目标（工作区档案声明）", goal.trim()]
+      : ["", "## 本次目标", "工作区档案未声明目标；按审查条件逐条核对着手，并在结论中说明取舍。"]),
     "",
     "## 审查条件",
     criteriaOrigin,

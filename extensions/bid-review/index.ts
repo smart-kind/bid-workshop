@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { defineFacet } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
@@ -217,6 +217,21 @@ async function documentFingerprint(filePath: string): Promise<string> {
   return createHash("sha256").update(bytes).digest("hex").slice(0, 16);
 }
 
+/** The goal the workspace's profile declares, when it declares one. */
+async function readDeclaredGoal(): Promise<string | undefined> {
+  const workspacePath = sessionCwd;
+  if (!workspacePath) return undefined;
+  try {
+    const raw = await readFile(join(workspacePath, ".bid", "workspace.json"), "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+    const goal = (parsed as { goal?: unknown }).goal;
+    return typeof goal === "string" && goal.trim() ? goal.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** A short digest of a file's text, for the criteria version a run used. */
 function fingerprintText(text: string): string {
   return createHash("sha256").update(text).digest("hex").slice(0, 16);
@@ -334,7 +349,9 @@ export default function bidReview(pi: ExtensionAPI) {
         const bid = loadedBids.get(fileId);
         if (!doc || !bid) continue;
         reviewingBids.set(fileId, { doc, bid });
-        briefs.push(buildReviewBrief(doc, bid, readCriteria(doc.path), TEXT_BUDGET));
+        briefs.push(
+          buildReviewBrief(doc, bid, readCriteria(doc.path), TEXT_BUDGET, await readDeclaredGoal()),
+        );
       }
 
       if (briefs.length === 0) {
@@ -775,7 +792,15 @@ export default function bidReview(pi: ExtensionAPI) {
               const bid = loadedBids.get(fileId);
               if (!doc || !bid) continue;
               reviewingBids.set(fileId, { doc, bid });
-              briefs.push(buildReviewBrief(doc, bid, readCriteria(doc.path), TEXT_BUDGET));
+              briefs.push(
+                buildReviewBrief(
+                  doc,
+                  bid,
+                  readCriteria(doc.path),
+                  TEXT_BUDGET,
+                  await readDeclaredGoal(),
+                ),
+              );
             }
             if (briefs.length === 0) {
               const message = "没有可审查的文档：请先加载标书";

@@ -62,6 +62,7 @@ export function BusinessContextBar({ api, workspaceId, onLocateZone }: BusinessC
   const [state, setState] = useState<BusinessContextState>({ status: "loading" });
   const [declined, setDeclined] = useState(false);
   const [pending, setPending] = useState(false);
+  const [goalDraft, setGoalDraft] = useState<string | null>(null);
 
   useEffect(() => {
     if (!api || !workspaceId) return;
@@ -100,6 +101,33 @@ export function BusinessContextBar({ api, workspaceId, onLocateZone }: BusinessC
     api
       .updateWorkspaceProfile({ workspaceId, profile: suggestion.proposedProfile })
       .then((result) => setState(toState(result)))
+      .catch(() => setState({ status: "unavailable" }))
+      .finally(() => setPending(false));
+  };
+  /** The profile the context came from, rebuilt so it can be written back whole. */
+  const profileWithGoal = (goal: string) =>
+    state.status === "ok"
+      ? {
+          schemaVersion: 1,
+          business: state.context.business,
+          ...(state.context.name === undefined ? {} : { name: state.context.name }),
+          ...(goal.trim() ? { goal: goal.trim() } : {}),
+          zones: state.context.zones,
+          skills: state.context.skills,
+          capabilities: { mcp: state.context.mcp },
+          delivery: state.context.delivery,
+        }
+      : null;
+  const saveGoal = () => {
+    const profile = goalDraft === null ? null : profileWithGoal(goalDraft);
+    if (!api || !workspaceId || !profile || pending) return;
+    setPending(true);
+    api
+      .updateWorkspaceProfile({ workspaceId, profile })
+      .then((result) => {
+        setState(toState(result));
+        setGoalDraft(null);
+      })
       .catch(() => setState({ status: "unavailable" }))
       .finally(() => setPending(false));
   };
@@ -159,6 +187,52 @@ export function BusinessContextBar({ api, workspaceId, onLocateZone }: BusinessC
             Not now
           </button>
         </>
+      ) : null}
+      {state.status === "ok" ? (
+        goalDraft === null ? (
+          <>
+            <span className="business-context__goal" data-testid="business-context-goal">
+              {state.context.goal ?? "未声明目标"}
+            </span>
+            <button
+              type="button"
+              className="business-context__action"
+              data-testid="business-context-goal-edit"
+              onClick={() => setGoalDraft(state.context.goal ?? "")}
+            >
+              声明目标
+            </button>
+          </>
+        ) : (
+          <>
+            <input
+              aria-label="审查目标"
+              className="business-context__goal-input"
+              data-testid="business-context-goal-input"
+              onChange={(event) => setGoalDraft(event.target.value)}
+              placeholder="例如：按评审条件审查产出目录的投标文件，逐条出批注"
+              value={goalDraft}
+            />
+            <button
+              type="button"
+              className="business-context__action"
+              data-testid="business-context-goal-save"
+              disabled={pending}
+              onClick={saveGoal}
+            >
+              保存
+            </button>
+            <button
+              type="button"
+              className="business-context__action"
+              data-testid="business-context-goal-cancel"
+              disabled={pending}
+              onClick={() => setGoalDraft(null)}
+            >
+              取消
+            </button>
+          </>
+        )
       ) : null}
       {state.status === "missing" && !askToInitialise ? (
         <span className="business-context__detail" data-testid="business-context-note">
