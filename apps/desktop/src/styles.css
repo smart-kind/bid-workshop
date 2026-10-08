@@ -2,11 +2,11 @@
 @import "./styles/base.css";
 @import "./styles/sidebar.css";
 @import "./styles/topbar.css";
-@import "./styles/business-context.css";
 @import "./styles/model-selector-panel.css";
 @import "./styles/context-meter.css";
 @import "./styles/new-thread.css";
 @import "./styles/main.css";
+@import "./styles/business-context.css";
 @import "./styles/workbench.css";
 @import "./styles/review.css";
 @import "./styles/extension-views.css";
