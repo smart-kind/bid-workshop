@@ -28,6 +28,9 @@ test-results/
 !/extensions/**/*.css
 index.html
 !apps/**/index.html
+# The hosted document editor's Vite entry is source, not build output: it lives
+# under src/, while build output stays covered by the `dist/` rule above.
+!packages/*/src/**/index.html
 
 # Vite hashed build output (anywhere)
 *-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9].js
@@ -39,7 +42,14 @@ index.html
 !extensions/*/dist/
 !extensions/*/dist/**
 
+# Same for the installable desktop-extension examples: their frames are served
+# from disk too, so each example's built bundle has to be in the clone. Three of
+# these five were silently missing until a clean clone was actually built.
+!examples/desktop-extensions/*/dist/
+!examples/desktop-extensions/*/dist/**
+
 # Vendored genoffice sources are checked in, so a clone builds with no upstream
-# checkout. Placed after the `*.js` rule so the few plain-JS files they ship
-# survive; node_modules and build output stay ignored.
+# checkout. Placed after the `*.js` and `*.css` rules so the plain-JS and CSS
+# files they ship survive; node_modules and build output stay ignored.
 !vendor/**/*.js
+!vendor/**/*.css
