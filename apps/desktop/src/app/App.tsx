@@ -13,6 +13,7 @@ import {
 import { updateSnapshot, useDesktopAppState } from "./desktop-app-state";
 import { BusinessContextBar } from "./business-context-bar";
 import { DesktopStartupSurface, toStartupSurfaceState } from "./desktop-recovery";
+import { StartupDiagnostics } from "./startup-diagnostics";
 import { buildFileWorkbenchContexts } from "./file-workbench-contexts";
 import { canTogglePrimarySidebar } from "./app-shell-utils";
 import { useDesktopCommands } from "./use-desktop-commands";
@@ -118,6 +119,7 @@ export default function App() {
     readonly request: DiffPanelFileRequest;
   } | null>(null);
   const [scheduledEditor, setScheduledEditor] = useState<ScheduledEditorState | null>(null);
+  const [revealDirectory, setRevealDirectory] = useState<string | null>(null);
   const api = window.piApp;
 
   useEffect(() => {
@@ -1050,25 +1052,17 @@ export default function App() {
           ) : null}
         </Topbar>
 
-        {snapshot.startupDiagnostics.length > 0 ? (
-          <div className="startup-diagnostics" role="status" data-testid="startup-diagnostics">
-            <strong>Some saved workspaces could not be refreshed.</strong>
-            <span>
-              {snapshot.startupDiagnostics
-                .map((diagnostic) => {
-                  const workspaceName = diagnostic.workspacePath
-                    ?.split(/[\\/]/)
-                    .filter(Boolean)
-                    .at(-1);
-                  return workspaceName ? `${workspaceName} is unavailable.` : diagnostic.message;
-                })
-                .join(" ")}
-            </span>
-          </div>
-        ) : null}
+        <StartupDiagnostics diagnostics={snapshot.startupDiagnostics} />
 
         {selectedWorkspace ? (
-          <BusinessContextBar api={api} workspaceId={selectedWorkspace.id} />
+          <BusinessContextBar
+            api={api}
+            onLocateZone={(path) => {
+              setRevealDirectory(path);
+              workbench.openTool({ kind: "files" });
+            }}
+            workspaceId={selectedWorkspace.id}
+          />
         ) : null}
 
         <>
@@ -1397,6 +1391,7 @@ export default function App() {
                       api={api}
                       onTabsChange={workbench.setFiles}
                       sessionStatus={selectedSession.status}
+                      revealDirectory={revealDirectory}
                       tabs={workbench.view.files.tabs}
                       worktree={filesWorktree}
                       workspace={filesWorkspace}

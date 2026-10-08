@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { BusinessWorkspaceContext } from "../../contracts/business-workspace";
 import type {
   BusinessWorkspaceContextResult,
   BusinessWorkspaceSuggestion,
   PiDesktopApi,
 } from "../../contracts/ipc";
+import { createZoneResolver } from "../../contracts/workspace-zones";
 
 export type BusinessContextState =
   | { readonly status: "loading" }
@@ -47,6 +48,8 @@ function describeSuggestion(suggestion: BusinessWorkspaceSuggestion): string {
 interface BusinessContextBarProps {
   readonly api: PiDesktopApi | undefined;
   readonly workspaceId: string | undefined;
+  /** Locate a declared zone directory in the Files pane. */
+  readonly onLocateZone?: (path: string) => void;
 }
 
 /**
@@ -55,7 +58,7 @@ interface BusinessContextBarProps {
  * like a bid workspace, and repairs an unusable profile — while never blocking
  * the folder from opening.
  */
-export function BusinessContextBar({ api, workspaceId }: BusinessContextBarProps) {
+export function BusinessContextBar({ api, workspaceId, onLocateZone }: BusinessContextBarProps) {
   const [state, setState] = useState<BusinessContextState>({ status: "loading" });
   const [declined, setDeclined] = useState(false);
   const [pending, setPending] = useState(false);
@@ -77,6 +80,15 @@ export function BusinessContextBar({ api, workspaceId }: BusinessContextBarProps
       disposed = true;
     };
   }, [api, workspaceId]);
+
+  const zoneEntries = useMemo(() => {
+    if (state.status !== "ok" || !state.context.zoned) return [];
+    try {
+      return createZoneResolver(state.context.zones).entries;
+    } catch {
+      return [];
+    }
+  }, [state]);
 
   if (!workspaceId) return null;
 
@@ -108,6 +120,20 @@ export function BusinessContextBar({ api, workspaceId }: BusinessContextBarProps
           <span className="business-context__detail">
             {state.context.zoned ? "Zoned workspace" : "No zones declared"}
           </span>
+          {zoneEntries.map((entry) => (
+            <button
+              key={`${entry.kind}:${entry.path}`}
+              type="button"
+              className={`business-context__zone${entry.readOnly ? " business-context__zone--read-only" : ""}`}
+              data-testid="business-context-zone"
+              data-zone-kind={entry.kind}
+              data-zone-path={entry.path}
+              data-zone-read-only={entry.readOnly ? "true" : "false"}
+              onClick={() => onLocateZone?.(entry.path)}
+            >
+              {entry.path}
+            </button>
+          ))}
         </>
       ) : null}
       {askToInitialise && suggestion ? (

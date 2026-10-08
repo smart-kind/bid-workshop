@@ -62,3 +62,22 @@
   opacity: 0.5;
   cursor: default;
 }
+
+.business-context__zone {
+  flex: none;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted-strong);
+  font: inherit;
+  cursor: pointer;
+}
+
+.business-context__zone--read-only {
+  border-style: dashed;
+}
+
+.business-context__zone:hover {
+  color: var(--text);
+}

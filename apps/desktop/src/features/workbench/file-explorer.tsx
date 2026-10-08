@@ -16,6 +16,10 @@ interface FileExplorerProps {
   readonly selectedPath: string | null;
   readonly onSelect: (path: string) => void;
   readonly onRefresh: () => void;
+  /** Files the workspace declares read-only, marked in the tree. */
+  readonly isReadOnlyPath?: (path: string) => boolean;
+  /** A directory to expand, e.g. after the context bar locates a zone. */
+  readonly revealDirectory?: string | null;
 }
 
 export function FileExplorer({
@@ -25,6 +29,8 @@ export function FileExplorer({
   selectedPath,
   onSelect,
   onRefresh,
+  isReadOnlyPath,
+  revealDirectory,
 }: FileExplorerProps) {
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
@@ -51,6 +57,21 @@ export function FileExplorer({
       return changed ? next : current;
     });
   }, [selectedPath]);
+
+  useEffect(() => {
+    if (!revealDirectory) return;
+    setExpanded((current) => {
+      const next = new Set(current);
+      let changed = false;
+      for (const directory of [revealDirectory, ...ancestorDirectoryPaths(revealDirectory)]) {
+        if (!next.has(directory)) {
+          next.add(directory);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [revealDirectory]);
 
   const emptyCopy = error
     ? error
@@ -95,6 +116,7 @@ export function FileExplorer({
               expanded={expanded}
               node={node}
               selectedPath={selectedPath}
+              isReadOnlyPath={isReadOnlyPath}
               onSelect={onSelect}
               onToggleDirectory={(path) => {
                 setExpanded((current) => {
@@ -120,6 +142,7 @@ function FileTreeRow({
   expandAll,
   expanded,
   selectedPath,
+  isReadOnlyPath,
   onSelect,
   onToggleDirectory,
 }: {
@@ -127,6 +150,7 @@ function FileTreeRow({
   readonly expandAll: boolean;
   readonly expanded: ReadonlySet<string>;
   readonly selectedPath: string | null;
+  readonly isReadOnlyPath?: (path: string) => boolean;
   readonly onSelect: (path: string) => void;
   readonly onToggleDirectory: (path: string) => void;
 }) {
@@ -157,6 +181,7 @@ function FileTreeRow({
                 expanded={expanded}
                 node={child}
                 selectedPath={selectedPath}
+                isReadOnlyPath={isReadOnlyPath}
                 onSelect={onSelect}
                 onToggleDirectory={onToggleDirectory}
               />
@@ -170,6 +195,7 @@ function FileTreeRow({
     <FileTreeFileRow
       name={node.name}
       path={node.path}
+      readOnly={isReadOnlyPath?.(node.path) ?? false}
       selected={selectedPath === node.path}
       onSelect={onSelect}
     />
@@ -179,11 +205,13 @@ function FileTreeRow({
 function FileTreeFileRow({
   name,
   path,
+  readOnly,
   selected,
   onSelect,
 }: {
   readonly name: string;
   readonly path: string;
+  readonly readOnly: boolean;
   readonly selected: boolean;
   readonly onSelect: (path: string) => void;
 }) {
@@ -197,6 +225,7 @@ function FileTreeFileRow({
     <button
       className={`file-workbench__tree-row file-workbench__tree-row--file ${selected ? "file-workbench__tree-row--selected" : ""}`}
       data-file-path={path}
+      data-read-only={readOnly ? "true" : undefined}
       ref={rowRef}
       style={{ "--depth": depthFromPath(path) } as CSSProperties}
       type="button"
@@ -206,6 +235,11 @@ function FileTreeFileRow({
         <FileIcon />
       </span>
       <span>{name}</span>
+      {readOnly ? (
+        <span className="file-workbench__read-only" data-testid="file-workbench-read-only">
+          Read-only
+        </span>
+      ) : null}
     </button>
   );
 }

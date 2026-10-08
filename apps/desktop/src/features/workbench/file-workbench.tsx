@@ -11,6 +11,7 @@ import type { PiDesktopApi } from "../../../contracts/ipc";
 import { FileEditorPane } from "./file-editor-pane";
 import { FileExplorer } from "./file-explorer";
 import { activateFile, closeFile, openFile, type FileWorkbenchTabs } from "./file-workbench-state";
+import { useWorkspaceZones } from "./use-workspace-zones";
 
 interface FileWorkbenchProps {
   readonly api: PiDesktopApi;
@@ -19,6 +20,8 @@ interface FileWorkbenchProps {
   readonly sessionStatus: string | undefined;
   readonly tabs: FileWorkbenchTabs;
   readonly onTabsChange: Dispatch<SetStateAction<FileWorkbenchTabs>>;
+  /** A directory the context bar asked to locate, expanded in the tree. */
+  readonly revealDirectory?: string | null;
 }
 
 export function FileWorkbench({
@@ -28,7 +31,9 @@ export function FileWorkbench({
   sessionStatus,
   tabs,
   onTabsChange,
+  revealDirectory,
 }: FileWorkbenchProps) {
+  const zones = useWorkspaceZones(api, workspace.id);
   const [files, setFiles] = useState<readonly string[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
@@ -98,7 +103,9 @@ export function FileWorkbench({
       <FileExplorer
         error={listError}
         files={files}
+        isReadOnlyPath={zones?.isZoned ? (path) => zones.isReadOnlyPath(path) : undefined}
         loading={loading}
+        revealDirectory={revealDirectory}
         selectedPath={tabs.active}
         onRefresh={() => refresh({ force: true })}
         onSelect={(path) => onTabsChange((current) => openFile(current, path))}

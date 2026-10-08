@@ -499,6 +499,18 @@
   background: var(--surface-muted);
 }
 
+.file-workbench__read-only {
+  margin-left: auto;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--muted-strong);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 .file-workbench__tree-icon {
   width: 15px;
   height: 15px;
