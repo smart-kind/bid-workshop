@@ -30,6 +30,7 @@ const durableStateOwners = [
       "apps/desktop/electron/persistence/atomic-file-write.ts",
       "apps/desktop/electron/persistence/app-store-persistence.ts",
       "apps/desktop/electron/persistence/attachment-store.ts",
+      "apps/desktop/electron/artifacts/artifact-store.ts",
       "apps/desktop/electron/scheduled-tasks/scheduled-task-store.ts",
       "apps/desktop/electron/workspace/workspace-profile.ts",
       reviewedStore,
