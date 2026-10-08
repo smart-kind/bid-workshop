@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { defineFacet } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
@@ -18,6 +18,7 @@ import {
 import { describeWorkingCopyFailure, writeBidWorkingCopy } from "./working-copy";
 import { describeRunDiff, diffLedgers } from "./run-diff";
 import { describeCommentSync, planDispositionMirror } from "./comment-mirror";
+import { renderMarkdownReport, writeReviewReport } from "./report";
 import { docxDispositionMirror } from "./parser-docx.mjs";
 import {
   buildLedger,
@@ -624,13 +625,37 @@ export default function bidReview(pi: ExtensionAPI) {
     label: "Export bid review report",
     description: "Export the current review results as a report",
     parameters: Type.Object({
-      format: Type.Union([Type.Literal("markdown"), Type.Literal("pdf")]),
+      format: Type.Union([Type.Literal("markdown"), Type.Literal("html")]),
+      outputDirectory: Type.Optional(
+        Type.String({ description: "报告输出目录；省略则写在标书所在目录" }),
+      ),
     }),
     async execute(_id, input) {
-      const outputPath = `/tmp/bid-review-${Date.now()}.${input.format === "markdown" ? "md" : "pdf"}`;
+      if (!currentLedger) {
+        return {
+          content: [{ type: "text", text: "还没有台账：请先用 bid_record_findings 记录结论" }],
+          details: { outputPath: "", format: input.format, entries: 0 },
+          isError: true,
+        };
+      }
+      const document = snapshot.loadedFiles[snapshot.loadedFiles.length - 1];
+      const directory =
+        input.outputDirectory ?? (document ? resolve(dirname(document.path)) : null);
+      if (!directory) {
+        return {
+          content: [{ type: "text", text: "没有可写报告的目录：请指定 outputDirectory" }],
+          details: { outputPath: "", format: input.format, entries: 0 },
+          isError: true,
+        };
+      }
+      const result = await writeReviewReport({
+        ledger: currentLedger,
+        directory,
+        format: input.format === "html" ? "html" : "markdown",
+      });
       return {
-        content: [{ type: "text", text: `Report exported to: ${outputPath}` }],
-        details: { outputPath, format: input.format },
+        content: [{ type: "text", text: `已导出 ${result.entries} 条条目到 ${result.outputPath}` }],
+        details: result,
       };
     },
   });
@@ -729,10 +754,22 @@ export default function bidReview(pi: ExtensionAPI) {
             };
           },
           async exportReport(input) {
+            if (!currentLedger) {
+              throw new Error("还没有台账：请先记录审查结论");
+            }
+            const target = snapshot.loadedFiles[snapshot.loadedFiles.length - 1];
+            const directory =
+              input.outputDirectory ?? (target ? dirname(resolve(target.path)) : null);
+            if (!directory) throw new Error("没有可写报告的目录");
+            const written = await writeReviewReport({
+              ledger: currentLedger,
+              directory,
+              format: input.format === "html" ? "html" : "markdown",
+            });
             return {
-              title: "Bid Review Report",
-              content: snapshot.summary || "",
-              outputPath: "/tmp/report",
+              title: "投标审查报告",
+              content: renderMarkdownReport(currentLedger),
+              outputPath: written.outputPath,
             };
           },
         });

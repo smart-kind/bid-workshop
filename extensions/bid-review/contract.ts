@@ -77,7 +77,10 @@ export interface BidReviewService {
   readDocument(input: { fileId: string }, context: Context): Promise<{ blocks: BidBodyBlock[] }>;
   /** Write the recorded findings into a copy of the document as Word comments. */
   writeComments(input: { fileId?: string }, context: Context): Promise<BidWrittenComments>;
-  exportReport(input: { format: "markdown" | "pdf" }, context: Context): Promise<ReportDraft>;
+  exportReport(
+    input: { format: "markdown" | "html"; outputDirectory?: string },
+    context: Context,
+  ): Promise<ReportDraft>;
 }
 
 export const BidReview = defineService<BidReviewService>("bid-workshop.bid-review.v1");
