@@ -14,7 +14,7 @@
 import {
   READ_ONLY_WORKSPACE_ZONES,
   WORKSPACE_ZONE_KINDS,
-  type WorkspaceContext,
+  type BusinessWorkspaceContext,
   type WorkspaceProfile,
   type WorkspaceZoneKind,
   type WorkspaceZones,
@@ -98,7 +98,9 @@ export function createZoneResolver(zones: WorkspaceZones): WorkspaceZoneResolver
  * The serializable context a decoded profile projects: what the workspace is,
  * which directories are zoned, and the enable-list/delivery defaults.
  */
-export function deriveWorkspaceContext(profile: WorkspaceProfile): WorkspaceContext {
+export function deriveBusinessWorkspaceContext(
+  profile: WorkspaceProfile,
+): BusinessWorkspaceContext {
   return {
     business: profile.business,
     ...(profile.name === undefined ? {} : { name: profile.name }),

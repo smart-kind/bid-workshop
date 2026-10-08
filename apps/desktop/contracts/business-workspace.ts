@@ -67,8 +67,11 @@ export const DEFAULT_WORKSPACE_DELIVERY: WorkspaceDelivery = {
  * declarations, the skill enable-list, the referenced MCP servers and the
  * delivery defaults. Serializable, so the main process can project it to the
  * renderer without shipping the resolver.
+ *
+ * Named `Business…` to stay distinct from the renderer's own workspace-selection
+ * context (`apps/desktop/src/app/workspace-context.ts`).
  */
-export interface WorkspaceContext {
+export interface BusinessWorkspaceContext {
   readonly business: string;
   readonly name?: string;
   readonly goal?: string;

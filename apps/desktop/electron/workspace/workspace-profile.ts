@@ -3,12 +3,12 @@ import { join } from "node:path";
 import {
   WORKSPACE_PROFILE_RELATIVE_PATH,
   decodeWorkspaceProfile,
-  type WorkspaceContext,
+  type BusinessWorkspaceContext,
   type WorkspaceProfile,
 } from "../../contracts/business-workspace";
 import {
   createZoneResolver,
-  deriveWorkspaceContext,
+  deriveBusinessWorkspaceContext,
   type WorkspaceZoneResolver,
 } from "../../contracts/workspace-zones";
 import { readJsonWithBackup, writeFileAtomicQueued } from "../persistence/atomic-file-write";
@@ -22,7 +22,7 @@ export type WorkspaceProfileState =
       readonly status: "ok";
       readonly path: string;
       readonly profile: WorkspaceProfile;
-      readonly context: WorkspaceContext;
+      readonly context: BusinessWorkspaceContext;
       readonly zones: WorkspaceZoneResolver;
       /** The primary file was broken and the value came from its `.bak` sibling. */
       readonly recoveredFromBackup: boolean;
@@ -53,7 +53,7 @@ export class WorkspaceProfileOwner {
         status: "ok",
         path,
         profile,
-        context: deriveWorkspaceContext(profile),
+        context: deriveBusinessWorkspaceContext(profile),
         zones: createZoneResolver(profile.zones),
         recoveredFromBackup: existing.recovered,
       };

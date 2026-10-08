@@ -19,6 +19,9 @@ import {
   type McpServersSnapshot,
   type NewMcpServerInput,
   type ChangedFilesResult,
+  type BusinessWorkspaceContextResult,
+  type GetWorkspaceContextInput,
+  type UpdateWorkspaceProfileInput,
   type DesktopNotificationPermissionStatus,
   type DocumentViewBounds,
   type WorkspaceFilePreview,
@@ -162,6 +165,16 @@ contextBridge.exposeInMainWorld("piApp", {
       desktopIpc.changeReviewFileStage,
       input,
     ) as Promise<ChangeReviewFileStageResult>,
+  getWorkspaceContext: (input: GetWorkspaceContextInput) =>
+    ipcRenderer.invoke(
+      desktopIpc.getWorkspaceContext,
+      input,
+    ) as Promise<BusinessWorkspaceContextResult>,
+  updateWorkspaceProfile: (input: UpdateWorkspaceProfileInput) =>
+    ipcRenderer.invoke(
+      desktopIpc.updateWorkspaceProfile,
+      input,
+    ) as Promise<BusinessWorkspaceContextResult>,
   onStateChanged: (listener: (state: DesktopAppState) => void) => {
     const handle = (_event: Electron.IpcRendererEvent, state: DesktopAppState) => {
       listener(state);

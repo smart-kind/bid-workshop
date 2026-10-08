@@ -12,6 +12,7 @@ import {
 } from "../../contracts/composer-attachments";
 import {
   desktopIpc,
+  type BusinessWorkspaceContextResult,
   type ChangedFilesResult,
   type CustomProviderProbeInput,
   type CustomProviderProbeResult,
@@ -21,6 +22,7 @@ import type { NotificationPermissionService } from "../platform/notification-per
 import type { TerminalService } from "../platform/terminal-service";
 import type { ThemeManager } from "../platform/theme-manager";
 import type { WindowOwner } from "../windows/window-owner";
+import type { WorkspaceProfileState } from "../workspace/workspace-profile";
 import type { PendingComposerDraftFlusher } from "../windows/pending-draft-flush";
 import { WorkbenchRequests, type WorkbenchOwner } from "./workbench-requests";
 import type { DesktopExtensionViewOwner } from "../extensions/extension-view-owner";
@@ -59,6 +61,8 @@ import {
   expectStartThreadInput,
   expectCreateScheduledTaskInput,
   expectUpdateScheduledTaskInput,
+  expectGetWorkspaceContextInput,
+  expectUpdateWorkspaceProfileInput,
   expectString,
   expectStringArray,
   expectTerminalSize,
@@ -95,6 +99,8 @@ type WorkspaceOwner = Pick<
   | "syncCurrentWorkspace"
   | "getWorkspacePath"
   | "getWorkspaceRecords"
+  | "readWorkspaceProfile"
+  | "updateWorkspaceProfile"
 >;
 
 type ConversationOwner = Pick<
@@ -263,6 +269,29 @@ export function registerDesktopIpc({
     desktopIpc.saveTaskWorkbenchTemplate,
     expectSaveTaskWorkbenchTemplateInput,
     (input, request) => workbench.save(trackWorkbenchSender(request.contents), input),
+  );
+  const projectBusinessContext = async (
+    state: Promise<WorkspaceProfileState | undefined>,
+  ): Promise<BusinessWorkspaceContextResult> => {
+    const resolved = await state;
+    switch (resolved?.status) {
+      case "ok":
+        return { status: "ok", context: resolved.context };
+      case "invalid":
+        return { status: "invalid", reason: resolved.reason };
+      case "missing":
+        return { status: "missing" };
+      default:
+        return { status: "unknown-workspace" };
+    }
+  };
+  handleMainFrame(desktopIpc.getWorkspaceContext, expectGetWorkspaceContextInput, (input) =>
+    projectBusinessContext(owners.workspace.readWorkspaceProfile(input.workspaceId)),
+  );
+  handleMainFrame(desktopIpc.updateWorkspaceProfile, expectUpdateWorkspaceProfileInput, (input) =>
+    projectBusinessContext(
+      owners.workspace.updateWorkspaceProfile(input.workspaceId, input.profile),
+    ),
   );
   const run = (event: IpcMainInvokeEvent, action: () => Promise<DesktopAppState>) =>
     windows.runStateAction(senderWindow(windows, event), action);

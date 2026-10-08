@@ -45,6 +45,21 @@ import {
   decodeTaskWorkbenchTemplate,
   type SaveTaskWorkbenchTemplateInput,
 } from "../../contracts/workbench";
+import { decodeWorkspaceProfile } from "../../contracts/business-workspace";
+import type { GetWorkspaceContextInput, UpdateWorkspaceProfileInput } from "../../contracts/ipc";
+
+export function expectGetWorkspaceContextInput(value: unknown): GetWorkspaceContextInput {
+  const record = expectRecord(value, "input");
+  return { workspaceId: expectNonEmptyString(record.workspaceId, "input.workspaceId") };
+}
+
+export function expectUpdateWorkspaceProfileInput(value: unknown): UpdateWorkspaceProfileInput {
+  const record = expectRecord(value, "input");
+  return {
+    workspaceId: expectNonEmptyString(record.workspaceId, "input.workspaceId"),
+    profile: decodeWorkspaceProfile(record.profile),
+  };
+}
 
 export function expectSaveTaskWorkbenchTemplateInput(
   value: unknown,

@@ -28,6 +28,7 @@ import type {
   ChangeReviewFileStageInput,
   ChangeReviewFileStageResult,
 } from "./review";
+import type { BusinessWorkspaceContext, WorkspaceProfile } from "./business-workspace";
 import type {
   AppView,
   ComposerAttachment,
@@ -227,6 +228,8 @@ export const desktopIpc = {
   getReviewFile: "pi-gui:get-review-file",
   setReviewFileReviewed: "pi-gui:set-review-file-reviewed",
   changeReviewFileStage: "pi-gui:change-review-file-stage",
+  getWorkspaceContext: "pi-gui:get-workspace-context",
+  updateWorkspaceProfile: "pi-gui:update-workspace-profile",
   getThemeMode: "pi-gui:get-theme-mode",
   getResolvedTheme: "pi-gui:get-resolved-theme",
   setThemeMode: "pi-gui:set-theme-mode",
@@ -700,6 +703,26 @@ export function isCloseFocusedSurfaceShortcut(input: {
   return input.key.toLowerCase() === "w" || input.code === "KeyW";
 }
 
+export interface GetWorkspaceContextInput {
+  readonly workspaceId: string;
+}
+
+export interface UpdateWorkspaceProfileInput {
+  readonly workspaceId: string;
+  readonly profile: WorkspaceProfile;
+}
+
+/**
+ * The business layer of a workspace, addressed to the window that asked for it.
+ * `missing` and `invalid` are ordinary answers: a broken profile never blocks
+ * opening the folder.
+ */
+export type BusinessWorkspaceContextResult =
+  | { readonly status: "ok"; readonly context: BusinessWorkspaceContext }
+  | { readonly status: "missing" }
+  | { readonly status: "invalid"; readonly reason: string }
+  | { readonly status: "unknown-workspace" };
+
 export interface PiDesktopApi {
   platform: NodeJS.Platform;
   versions: NodeJS.ProcessVersions;
@@ -905,6 +928,10 @@ export interface PiDesktopApi {
   onExtensionViewMessage(listener: (event: ExtensionViewMessage) => void): () => void;
   onExtensionViewCatalogChanged(listener: (event: ExtensionViewCatalogChange) => void): () => void;
   getTurnChanges(input: TurnChangesInput): Promise<TurnChangesResult>;
+  getWorkspaceContext(input: GetWorkspaceContextInput): Promise<BusinessWorkspaceContextResult>;
+  updateWorkspaceProfile(
+    input: UpdateWorkspaceProfileInput,
+  ): Promise<BusinessWorkspaceContextResult>;
   getReview(input: GetReviewInput): Promise<ReviewResult>;
   getReviewFile(input: ReviewFileInput): Promise<ReviewFileResult>;
   setReviewFileReviewed(input: SetReviewFileReviewedInput): Promise<SetReviewFileReviewedResult>;

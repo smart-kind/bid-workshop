@@ -11,6 +11,7 @@ import {
   scheduledOriginsByMessageId,
 } from "../../contracts/scheduled-tasks";
 import { updateSnapshot, useDesktopAppState } from "./desktop-app-state";
+import { BusinessContextBar } from "./business-context-bar";
 import { DesktopStartupSurface, toStartupSurfaceState } from "./desktop-recovery";
 import { buildFileWorkbenchContexts } from "./file-workbench-contexts";
 import { canTogglePrimarySidebar } from "./app-shell-utils";
@@ -768,6 +769,7 @@ export default function App() {
     "main",
     sidePanelVisible ? "main--with-side-panel" : "",
     snapshot.startupDiagnostics.length > 0 ? "main--with-startup-diagnostics" : "",
+    selectedWorkspace ? "main--with-business-context" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -1063,6 +1065,10 @@ export default function App() {
                 .join(" ")}
             </span>
           </div>
+        ) : null}
+
+        {selectedWorkspace ? (
+          <BusinessContextBar api={api} workspaceId={selectedWorkspace.id} />
         ) : null}
 
         <>

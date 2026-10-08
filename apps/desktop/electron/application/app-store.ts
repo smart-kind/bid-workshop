@@ -90,6 +90,7 @@ import {
   writePersistedUiState,
 } from "../persistence/app-store-persistence";
 import { AttachmentStore } from "../persistence/attachment-store";
+import type { WorkspaceProfile } from "../../contracts/business-workspace";
 import { WorkspaceProfileOwner, type WorkspaceProfileState } from "../workspace/workspace-profile";
 import {
   type PendingRuntimeCommandExecution,
@@ -880,6 +881,26 @@ export class DesktopAppStore {
   async readWorkspaceProfile(workspaceId: string): Promise<WorkspaceProfileState | undefined> {
     const path = this.getWorkspacePath(workspaceId);
     return path === undefined ? undefined : this.workspaceProfile.read(path);
+  }
+
+  /**
+   * Write a profile for an open workspace and return the resulting state.
+   * An unusable profile is repaired through the owner's rebuild path, which
+   * preserves the rejected bytes instead of clobbering them.
+   */
+  async updateWorkspaceProfile(
+    workspaceId: string,
+    profile: WorkspaceProfile,
+  ): Promise<WorkspaceProfileState | undefined> {
+    const path = this.getWorkspacePath(workspaceId);
+    if (path === undefined) return undefined;
+    const current = await this.workspaceProfile.read(path);
+    if (current.status === "invalid") {
+      await this.workspaceProfile.rebuild(path, profile);
+    } else {
+      await this.workspaceProfile.write(path, profile);
+    }
+    return this.workspaceProfile.read(path);
   }
 
   /** The current folders and their threads, for checks that must not wait on a state copy. */

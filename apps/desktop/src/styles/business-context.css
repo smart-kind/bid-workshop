@@ -1,0 +1,44 @@
+/* =============================================================================
+ * Business context bar — the current workspace's business layer, shown above
+ * the main pane so the business type and zoning stay visible.
+ * ========================================================================== */
+
+.main--with-business-context {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.main--with-business-context.main--with-startup-diagnostics {
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+}
+
+.main--with-side-panel > .business-context {
+  grid-column: 1;
+}
+
+.business-context {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 4px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--main);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.business-context:empty {
+  display: none;
+}
+
+.business-context__label {
+  color: var(--text);
+  font-weight: var(--font-medium);
+}
+
+.business-context__detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
