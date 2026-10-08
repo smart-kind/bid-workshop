@@ -65,6 +65,7 @@ import {
   expectUpdateScheduledTaskInput,
   expectGetWorkspaceContextInput,
   expectUpdateWorkspaceProfileInput,
+  expectWriteWorkspaceFileInput,
   expectString,
   expectStringArray,
   expectTerminalSize,
@@ -103,6 +104,7 @@ type WorkspaceOwner = Pick<
   | "getWorkspaceRecords"
   | "readWorkspaceBusiness"
   | "updateWorkspaceProfile"
+  | "writeWorkspaceFile"
 >;
 
 type ConversationOwner = Pick<
@@ -305,6 +307,9 @@ export function registerDesktopIpc({
     projectBusinessContext(
       owners.workspace.updateWorkspaceProfile(input.workspaceId, input.profile),
     ),
+  );
+  handleMainFrame(desktopIpc.writeWorkspaceFile, expectWriteWorkspaceFileInput, (input) =>
+    owners.workspace.writeWorkspaceFile(input.workspaceId, input.filePath, input.contents),
   );
   const run = (event: IpcMainInvokeEvent, action: () => Promise<DesktopAppState>) =>
     windows.runStateAction(senderWindow(windows, event), action);

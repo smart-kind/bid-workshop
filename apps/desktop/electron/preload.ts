@@ -22,6 +22,7 @@ import {
   type BusinessWorkspaceContextResult,
   type GetWorkspaceContextInput,
   type UpdateWorkspaceProfileInput,
+  type WriteWorkspaceFileInput,
   type DesktopNotificationPermissionStatus,
   type DocumentViewBounds,
   type WorkspaceFilePreview,
@@ -175,6 +176,8 @@ contextBridge.exposeInMainWorld("piApp", {
       desktopIpc.updateWorkspaceProfile,
       input,
     ) as Promise<BusinessWorkspaceContextResult>,
+  writeWorkspaceFile: (input: WriteWorkspaceFileInput) =>
+    ipcRenderer.invoke(desktopIpc.writeWorkspaceFile, input) as Promise<void>,
   onStateChanged: (listener: (state: DesktopAppState) => void) => {
     const handle = (_event: Electron.IpcRendererEvent, state: DesktopAppState) => {
       listener(state);

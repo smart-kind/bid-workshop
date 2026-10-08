@@ -230,6 +230,7 @@ export const desktopIpc = {
   changeReviewFileStage: "pi-gui:change-review-file-stage",
   getWorkspaceContext: "pi-gui:get-workspace-context",
   updateWorkspaceProfile: "pi-gui:update-workspace-profile",
+  writeWorkspaceFile: "pi-gui:write-workspace-file",
   getThemeMode: "pi-gui:get-theme-mode",
   getResolvedTheme: "pi-gui:get-resolved-theme",
   setThemeMode: "pi-gui:set-theme-mode",
@@ -712,6 +713,13 @@ export interface UpdateWorkspaceProfileInput {
   readonly profile: WorkspaceProfile;
 }
 
+export interface WriteWorkspaceFileInput {
+  readonly workspaceId: string;
+  /** Workspace-relative path, as used by `readWorkspaceFile`. */
+  readonly filePath: string;
+  readonly contents: string;
+}
+
 /**
  * What a folder looks like when it has no usable profile: the review
  * candidates found, and the profile we would write if the user accepts.
@@ -949,6 +957,8 @@ export interface PiDesktopApi {
   updateWorkspaceProfile(
     input: UpdateWorkspaceProfileInput,
   ): Promise<BusinessWorkspaceContextResult>;
+  /** Refused by the workspace write gate when the path is in a read-only zone. */
+  writeWorkspaceFile(input: WriteWorkspaceFileInput): Promise<void>;
   getReview(input: GetReviewInput): Promise<ReviewResult>;
   getReviewFile(input: ReviewFileInput): Promise<ReviewFileResult>;
   setReviewFileReviewed(input: SetReviewFileReviewedInput): Promise<SetReviewFileReviewedResult>;

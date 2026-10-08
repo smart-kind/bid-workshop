@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
-import { open, readdir, readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import ignore from "ignore";
 import type { WorkspaceFilePreview } from "../../../contracts/ipc";
 import { isolatedGitEnvironment } from "./git-environment";
-import { resolveExistingWorkspacePath } from "./workspace-paths";
+import { resolveExistingWorkspacePath, resolveWorkspacePath } from "./workspace-paths";
 
 const fileCache = new Map<string, { files: string[]; timestamp: number }>();
 const CACHE_TTL_MS = 30_000;
@@ -39,6 +40,28 @@ export async function listWorkspaceFiles(
     (await walkWorkspaceFiles(workspacePath, maxFiles));
   rememberListedFiles(workspacePath, files);
   return files;
+}
+
+/**
+ * Write one text file inside a workspace, atomically (temp file + rename) so a
+ * crash cannot leave a half-written file behind. Callers must have passed the
+ * workspace write gate first.
+ */
+export async function writeWorkspaceTextFile(
+  workspacePath: string,
+  filePath: string,
+  contents: string,
+): Promise<void> {
+  const target = resolveWorkspacePath(workspacePath, filePath);
+  await mkdir(path.dirname(target), { recursive: true });
+  const scratch = `${target}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(scratch, contents, "utf8");
+    await rename(scratch, target);
+  } catch (error) {
+    await rm(scratch, { force: true });
+    throw error;
+  }
 }
 
 export async function readWorkspaceFile(

@@ -91,6 +91,8 @@ import {
 } from "../persistence/app-store-persistence";
 import { AttachmentStore } from "../persistence/attachment-store";
 import type { WorkspaceProfile } from "../../contracts/business-workspace";
+import { assertWorkspaceWriteAllowed } from "../workspace/write-gate";
+import { writeWorkspaceTextFile } from "../platform/files/app-store-files";
 import {
   WorkspaceProfileOwner,
   type WorkspaceBusinessState,
@@ -905,6 +907,17 @@ export class DesktopAppStore {
       await this.workspaceProfile.write(path, profile);
     }
     return this.workspaceProfile.readBusiness(path);
+  }
+
+  /**
+   * Write a text file inside a workspace. Read-only zones are refused by the
+   * write gate, not by disabling UI: a direct IPC call gets the same refusal.
+   */
+  async writeWorkspaceFile(workspaceId: string, filePath: string, contents: string): Promise<void> {
+    const path = this.getWorkspacePath(workspaceId);
+    if (path === undefined) throw new Error("Unknown workspace");
+    await assertWorkspaceWriteAllowed(this.workspaceProfile, path, filePath);
+    await writeWorkspaceTextFile(path, filePath, contents);
   }
 
   /** The current folders and their threads, for checks that must not wait on a state copy. */

@@ -28,6 +28,7 @@ const mainFrameChannels = [
   "changeReviewFileStage",
   "getWorkspaceContext",
   "updateWorkspaceProfile",
+  "writeWorkspaceFile",
   "listExtensionViews",
   "openExtensionView",
   "sendExtensionViewMessage",
