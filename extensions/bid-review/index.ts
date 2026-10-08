@@ -86,6 +86,7 @@ function collectCommentAnchors(issues: BidIssue[]): {
       blockIndex,
     };
     if (issue.location?.quote !== undefined) anchor.quote = issue.location.quote;
+    if (issue.location?.cell !== undefined) anchor.cell = issue.location.cell;
     anchors.push(anchor);
   }
   return { anchors, unanchored };
@@ -367,6 +368,10 @@ export default function bidReview(pi: ExtensionAPI) {
           };
         }
         const skipped = [...result.skipped, ...unanchored];
+        const tableNote =
+          result.degraded.length > 0
+            ? `；其中 ${result.degraded.length} 条落在表格内，已锚定到表格上方的段落并在批注里注明了行列，未精确到单元格`
+            : "";
         const note =
           skipped.length > 0
             ? `，另有 ${skipped.length} 条因定位缺失未写入（${skipped.join("、")}）`
@@ -375,7 +380,7 @@ export default function bidReview(pi: ExtensionAPI) {
           content: [
             {
               type: "text",
-              text: `已写入 ${result.written} 条批注到 ${result.outputPath}${note}`,
+              text: `已写入 ${result.written} 条批注到 ${result.outputPath}${tableNote}${note}`,
             },
           ],
           details: {

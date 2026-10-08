@@ -80,6 +80,40 @@ function toBidComment(comment) {
   return mapped;
 }
 
+/** The text of a block, for naming a table in a degraded comment. */
+function blockPlainText(block) {
+  return (block.runs ?? [])
+    .map((run) => run.text)
+    .join("")
+    .trim();
+}
+
+/** The heading a table belongs to, when the document has one right above it. */
+function tableTitle(visible, index) {
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const block = visible[i];
+    if (!block) continue;
+    if (block.type === "heading") return blockPlainText(block) || "表格";
+    if (REGENERABLE.has(block.type)) return null;
+  }
+  return null;
+}
+
+/** The nearest block above that can hold a comment: the table's title paragraph. */
+function nearestAnchorableBlock(visible, index) {
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const block = visible[i];
+    if (block && REGENERABLE.has(block.type)) return i;
+  }
+  return -1;
+}
+
+/** What a degraded comment says about where the finding really sits. */
+function degradeNote(title, cell) {
+  const where = cell ? `第${cell.row}行${cell.label ? ` ${cell.label}` : ""}` : "表格内";
+  return `${title ? `${title} ` : ""}${where}（未锚定到单元格）`;
+}
+
 export const docxParser = {
   async parse(filePath) {
     const bytes = await readFile(filePath);
@@ -103,18 +137,42 @@ export const docxCommentWriter = {
     // decimal number, so number the comments and keep the finding id alongside.
     const byBlock = new Map();
     const skipped = [];
+    const degraded = [];
     const numbered = [];
     for (const comment of comments) {
-      const block = visible[comment.blockIndex];
+      let target = comment.blockIndex;
+      let block = visible[target];
+      if (block && !REGENERABLE.has(block.type) && block.table) {
+        // A table cannot carry the comment itself; say where it belongs and
+        // anchor it on the table's own paragraph instead of dropping it.
+        const anchorBlockIndex = nearestAnchorableBlock(visible, target);
+        if (anchorBlockIndex < 0) {
+          skipped.push(comment.id);
+          continue;
+        }
+        const title = tableTitle(visible, target);
+        degraded.push({
+          finding: comment.id,
+          reason: "table-cell",
+          anchorBlockIndex,
+          ...(title ? { table: title } : {}),
+          ...(comment.cell ? { cell: comment.cell } : {}),
+        });
+        target = anchorBlockIndex;
+        block = visible[target];
+      }
       if (!block || !REGENERABLE.has(block.type)) {
         skipped.push(comment.id);
         continue;
       }
-      const withId = { ...comment, commentId: String(numbered.length + 1) };
+      const text = degraded.some((entry) => entry.finding === comment.id)
+        ? `${degradeNote(tableTitle(visible, comment.blockIndex), comment.cell)}：${comment.text}`
+        : comment.text;
+      const withId = { ...comment, text, commentId: String(numbered.length + 1) };
       numbered.push(withId);
-      const group = byBlock.get(comment.blockIndex) ?? [];
+      const group = byBlock.get(target) ?? [];
       group.push(withId);
-      byBlock.set(comment.blockIndex, group);
+      byBlock.set(target, group);
     }
 
     const saveBlocks = visible.map((block, index) => {
@@ -139,6 +197,7 @@ export const docxCommentWriter = {
       outputPath,
       written: commentInfos.length,
       skipped,
+      degraded,
       ids: numbered.map((comment) => ({ finding: comment.id, comment: comment.commentId })),
     };
   },

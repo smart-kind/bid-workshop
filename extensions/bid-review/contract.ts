@@ -21,7 +21,14 @@ export interface BidIssue {
   description: string;
   /** Where the problem is. blockIndex points at a block in the loaded document
    *  so a later step can anchor a Word comment there. */
-  location?: { section?: string; blockIndex?: number; page?: number; quote?: string };
+  location?: {
+    section?: string;
+    blockIndex?: number;
+    page?: number;
+    quote?: string;
+    /** Set when the finding is about a cell of the table at `blockIndex`. */
+    cell?: { row: number; column: number; label?: string };
+  };
   /** Which requirement the finding is judged against. */
   basis?: string;
   suggestion?: string;

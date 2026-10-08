@@ -97,6 +97,9 @@ export interface BidCommentAnchor {
   /** Exact text inside the block to anchor to; when absent the whole block is
    *  annotated. A quote that is not found falls back to the whole block. */
   quote?: string;
+  /** Position inside a table, when the finding is about one of its cells. The
+   *  anchor degrades to the table's own paragraph and says so. */
+  cell?: { row: number; column: number; label?: string };
 }
 
 export interface BidCommentWriteResult {
@@ -104,8 +107,21 @@ export interface BidCommentWriteResult {
   written: number;
   /** Comments dropped because their block index was not anchorable. */
   skipped: string[];
+  /** Comments written somewhere other than where they were aimed, with the reason. */
+  degraded: BidDegradedAnchor[];
   /** Which numeric comment id each finding was written as. */
   ids: Array<{ finding: string; comment: string }>;
+}
+
+/** A comment that had to be anchored away from its target, and where it landed. */
+export interface BidDegradedAnchor {
+  finding: string;
+  reason: "table-cell";
+  /** The block the comment was written on instead. */
+  anchorBlockIndex: number;
+  /** The table it belongs to, when the document names one. */
+  table?: string;
+  cell?: { row: number; column: number; label?: string };
 }
 
 /** Writes comments into a copy of a document. */
