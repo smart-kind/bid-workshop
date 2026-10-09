@@ -121,3 +121,69 @@ test("a document in a read-only zone is refused, and the file is untouched", asy
     await harness.close();
   }
 });
+
+/** Ask the preload to save exactly this, the way the editor's own shell would. */
+async function saveViaPreload(
+  documentView: Page,
+  path: string,
+  auto: boolean,
+): Promise<{ ok: boolean; reason?: string; error?: string }> {
+  return documentView.evaluate(
+    async ([target, isAuto]) => {
+      const desktop = (
+        window as unknown as {
+          desktop: {
+            saveDocx: (
+              path: string,
+              bytes: Uint8Array,
+              auto: boolean,
+            ) => Promise<{ ok: boolean; reason?: string; error?: string }>;
+          };
+        }
+      ).desktop;
+      return desktop.saveDocx(target as string, new Uint8Array([1, 2, 3]), isAuto as boolean);
+    },
+    [path, auto] as const,
+  );
+}
+
+test("only a path this editor opened may be overwritten", async () => {
+  test.setTimeout(120_000);
+  const workspacePath = await makeWorkspace("document-save-grant");
+  await copyFile(sampleBidSource, join(workspacePath, SAMPLE_FILE));
+  await mkdir(join(workspacePath, "产出"), { recursive: true });
+  await writeTextFile(join(workspacePath, "产出", "别人的.docx"), "not ours");
+  const { harness, documentView } = await openSample(workspacePath, SAMPLE_FILE);
+
+  try {
+    // A writable path the editor never opened is still refused.
+    const foreign = join(workspacePath, "产出", "别人的.docx");
+    const refused = await saveViaPreload(documentView, foreign, true);
+    expect(refused.ok).toBe(false);
+    expect(refused.error).toContain("不是本编辑器打开或另存的文档");
+    expect(await readFile(foreign, "utf8")).toBe("not ours");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("an autosave over a file another program changed is reported, not written", async () => {
+  test.setTimeout(120_000);
+  const workspacePath = await makeWorkspace("document-save-external");
+  await copyFile(sampleBidSource, join(workspacePath, SAMPLE_FILE));
+  const target = join(workspacePath, SAMPLE_FILE);
+  const { harness, documentView } = await openSample(workspacePath, SAMPLE_FILE);
+
+  try {
+    // Another program lands a change while the editor is still holding its copy.
+    await writeTextFile(target, "changed elsewhere");
+
+    const result = await saveViaPreload(documentView, target, true);
+
+    expect(result).toEqual({ ok: false, reason: "external-modified" });
+    // Autosave never clobbers it.
+    expect(await readFile(target, "utf8")).toBe("changed elsewhere");
+  } finally {
+    await harness.close();
+  }
+});

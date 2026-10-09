@@ -1,8 +1,15 @@
-import { createHash, randomUUID } from "node:crypto";
-import { copyFile, readFile, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
-import path, { dirname, join } from "node:path";
-import { ipcMain, protocol, WebContentsView, type BrowserWindow } from "electron";
+import { randomUUID } from "node:crypto";
+import { copyFile, readFile, realpath, stat } from "node:fs/promises";
+import path from "node:path";
+import { dialog, ipcMain, protocol, WebContentsView, type BrowserWindow } from "electron";
 import { DOCUMENT_IPC, DOCUMENT_VIEW_SCHEME } from "./document-channels";
+import {
+  atomicWriteDocument,
+  hashFile,
+  isExternallyModified,
+  readDiskFileState,
+  type DiskFileState,
+} from "./document-write";
 
 /**
  * The document editor (`packages/document-editor`) is a standalone static
@@ -64,6 +71,8 @@ export interface WriteDocumentRequest {
   readonly sourcePath?: string;
   readonly overwrite?: boolean;
   readonly bytes: Uint8Array;
+  /** Autosave: a conflict is reported, never prompted. */
+  readonly auto?: boolean;
 }
 
 export interface WriteDocumentResult {
@@ -92,6 +101,7 @@ interface Pending {
 
 interface Entry {
   readonly view: WebContentsView;
+  readonly window: BrowserWindow;
   /** the document currently shown, null while hidden */
   currentPath: string | null;
   /** what the next `consume-pending-open` from this view returns */
@@ -121,8 +131,10 @@ export class DocumentViewOwner {
   private readonly chooseSavePath?: DocumentViewOwnerOptions["chooseSavePath"];
   /** The last state a view reported, so a menu can start from it. */
   reportedViewMenuState: DocumentViewMenuState | null = null;
-  /** Content digest of each document as it was opened, to notice outside edits. */
-  private readonly openedDigests = new Map<string, string>();
+  /** Disk state of each document as we last read or wrote it. */
+  private readonly diskStates = new Map<string, DiskFileState>();
+  /** Paths each renderer is allowed to overwrite: what it opened, plus what it chose. */
+  private readonly writablePaths = new Map<number, Set<string>>();
 
   constructor(options: DocumentViewOwnerOptions) {
     this.distRoot = options.distRoot;
@@ -145,8 +157,8 @@ export class DocumentViewOwner {
     // Answered synchronously at boot: the preload has to know before the editor
     // renders, and a reload must see the host's current choice, not the one the
     // view was first created with.
-    ipcMain.handle(DOCUMENT_IPC.writeDocument, (_event, payload: unknown) =>
-      this.writeDocument(payload),
+    ipcMain.handle(DOCUMENT_IPC.writeDocument, (event, payload: unknown) =>
+      this.writeDocument(event.sender.id, payload),
     );
     ipcMain.on(DOCUMENT_IPC.aiPanelDefault, (event) => {
       event.returnValue = this.aiPanelDefault() ? "1" : "0";
@@ -171,7 +183,7 @@ export class DocumentViewOwner {
     if (entry.pending) this.handoffs.delete(entry.pending.token);
     const token = randomUUID();
     this.handoffs.set(token, { absolutePath: input.absolutePath });
-    this.noteOpenedDocument(input.absolutePath);
+    this.grantWrite(entry.view.webContents.id, input.absolutePath);
     entry.pending = {
       path: input.absolutePath,
       name: path.basename(input.absolutePath),
@@ -199,68 +211,81 @@ export class DocumentViewOwner {
    * aborts the write, and the file that was there is kept as a timestamped
    * backup before the new bytes take its place.
    */
-  async writeDocument(payload: unknown): Promise<WriteDocumentResult> {
+  async writeDocument(senderId: number, payload: unknown): Promise<WriteDocumentResult> {
     const request = parseWriteDocumentRequest(payload);
     if (!request) return { ok: false, error: "无法识别的保存请求" };
+    const entry = this.entryForSender(senderId);
 
     try {
       if (request.mode === "save-new") {
-        return {
-          ok: false,
-          error: "新文档还没有位置：请先另存为，选择一个工作区内的目录",
-        };
+        return { ok: false, error: "新文档还没有位置：请先另存为，选择一个工作区内的目录" };
       }
-      const target =
-        request.mode === "save-as"
-          ? await this.chooseSavePath?.({
-              suggestedName: request.name ?? "未命名.docx",
-              ...(request.sourcePath ? { sourcePath: request.sourcePath } : {}),
-            })
-          : request.path;
+
+      let target: string | undefined = request.path;
+      if (request.mode === "save-as") {
+        target = await this.chooseSavePath?.({
+          suggestedName: request.name ?? "未命名.docx",
+          ...(request.sourcePath ? { sourcePath: request.sourcePath } : {}),
+        });
+        // Choosing a path is what authorizes it: the renderer may save there,
+        // and nowhere else, from now on.
+        if (target) this.grantWrite(senderId, target);
+      }
       if (!target) return { ok: false, error: "没有选择保存位置" };
 
+      // Only a path this renderer opened or chose may be overwritten.
+      if (!this.canWrite(senderId, target)) {
+        return { ok: false, error: "该路径不是本编辑器打开或另存的文档，拒绝写入" };
+      }
       await this.assertWritableDocument(target);
 
       const existing = await stat(target).catch(() => null);
-      if (existing?.isFile() && request.mode !== "save-to") {
-        // The editor holds the bytes it loaded; if the file moved underneath it,
-        // writing would silently drop whatever else changed it.
-        const opened = this.digestFor(target);
-        if (opened && opened !== (await digestFile(target))) {
-          return {
-            ok: false,
-            reason: "external-modified",
-            error: "文件在编辑器之外被改动过，未覆盖；请重新打开后再保存",
-          };
-        }
+      if (existing?.isFile() && (await isExternallyModified(this.diskStates.get(target), target))) {
+        // Autosave must never clobber another program's edits silently; a manual
+        // save asks, and only an explicit yes lands the write.
+        if (request.auto === true) return { ok: false, reason: "external-modified" };
+        const choice = entry
+          ? await dialog.showMessageBox(entry.window, {
+              type: "warning",
+              message: "文件在编辑器之外被改动过",
+              detail: `${target}\n覆盖会丢掉那部分改动；取消则会保留磁盘上的版本。`,
+              buttons: ["覆盖", "取消"],
+              defaultId: 0,
+              cancelId: 1,
+              noLink: true,
+            })
+          : { response: 1 };
+        if (choice.response !== 0) return { ok: false, reason: "external-modified" };
       }
       if (existing?.isFile() && request.mode === "save-to" && request.overwrite === false) {
         return { ok: false, error: `${target} 已存在` };
       }
 
-      const backupPath = existing?.isFile() ? await backupFile(target) : undefined;
-      await writeBytesAtomically(target, Buffer.from(request.bytes));
-      this.rememberDigest(target, await digestFile(target));
-      void backupPath;
+      // A copy of what was there, so an in-place save is undoable by hand.
+      if (existing?.isFile()) await backupFile(target);
+      await atomicWriteDocument(target, Buffer.from(request.bytes));
+      const state = await readDiskFileState(target);
+      if (state) this.diskStates.set(target, state);
       return { ok: true, path: target };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
-  private digestFor(path: string): string | undefined {
-    return this.openedDigests.get(path);
-  }
-
-  private rememberDigest(path: string, digest: string): void {
-    this.openedDigests.set(path, digest);
-  }
-
-  /** Remember what a document looked like when it was handed to the editor. */
-  private noteOpenedDocument(path: string): void {
-    void digestFile(path)
-      .then((digest) => this.rememberDigest(path, digest))
+  /** Grant one renderer the right to overwrite one path, and remember its state. */
+  private grantWrite(senderId: number, filePath: string): void {
+    const allowed = this.writablePaths.get(senderId) ?? new Set<string>();
+    allowed.add(filePath);
+    this.writablePaths.set(senderId, allowed);
+    void readDiskFileState(filePath)
+      .then((state) => {
+        if (state) this.diskStates.set(filePath, state);
+      })
       .catch(() => undefined);
+  }
+
+  private canWrite(senderId: number, filePath: string): boolean {
+    return this.writablePaths.get(senderId)?.has(filePath) === true;
   }
 
   /** Re-boot every live view so it picks up the host's current preferences. */
@@ -303,7 +328,7 @@ export class DocumentViewOwner {
       path: pending.path,
       name: pending.name,
       dataUrl: `${DOCUMENT_VIEW_SCHEME}://app/_handoff/${pending.token}`,
-      hash: await this.hashOf(pending.path),
+      hash: await hashFile(pending.path).catch(() => ""),
     };
   }
 
@@ -312,17 +337,6 @@ export class DocumentViewOwner {
       if (entry.view.webContents.id === senderId) return entry;
     }
     return undefined;
-  }
-
-  private async hashOf(absolutePath: string): Promise<string> {
-    try {
-      return createHash("sha256")
-        .update(await readFile(absolutePath))
-        .digest("hex");
-    } catch (error: unknown) {
-      this.onDiagnostic(`document hash failed: ${stringify(error)}`);
-      return "";
-    }
   }
 
   private entryFor(window: BrowserWindow): Entry {
@@ -346,7 +360,7 @@ export class DocumentViewOwner {
       this.onDiagnostic(`document view renderer gone: ${details.reason}`);
     });
     window.contentView.addChildView(view);
-    const entry: Entry = { view, currentPath: null, pending: null };
+    const entry: Entry = { view, window, currentPath: null, pending: null };
     this.entries.set(window.id, entry);
     return entry;
   }
@@ -516,32 +530,12 @@ function parseWriteDocumentRequest(value: unknown): WriteDocumentRequest | undef
     ...(typeof request.name === "string" ? { name: request.name } : {}),
     ...(typeof request.sourcePath === "string" ? { sourcePath: request.sourcePath } : {}),
     ...(typeof request.overwrite === "boolean" ? { overwrite: request.overwrite } : {}),
+    ...(typeof request.auto === "boolean" ? { auto: request.auto } : {}),
   };
 }
 
-async function digestFile(path: string): Promise<string> {
-  const { readFile } = await import("node:fs/promises");
-  return createHash("sha256")
-    .update(await readFile(path))
-    .digest("hex");
-}
-
-/** Keep what was on disk, under a name that says when it was set aside. */
-async function backupFile(path: string): Promise<string> {
+/** Keep what was on disk beside it, under a name that says when it was set aside. */
+async function backupFile(filePath: string): Promise<void> {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const backupPath = join(dirname(path), `${path.slice(dirname(path).length + 1)}.bak-${stamp}`);
-  await copyFile(path, backupPath);
-  return backupPath;
-}
-
-/** Temp file + rename, so a crash cannot leave a half-written document behind. */
-async function writeBytesAtomically(path: string, bytes: Buffer): Promise<void> {
-  const scratch = `${path}.${process.pid}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(scratch, bytes);
-    await rename(scratch, path);
-  } catch (error) {
-    await unlink(scratch).catch(() => undefined);
-    throw error;
-  }
+  await copyFile(filePath, `${filePath}.bak-${stamp}`);
 }
