@@ -2,8 +2,8 @@ import { app, net, Notification, shell } from "electron";
 
 // /releases/latest skips drafts and prereleases, so stable installs are only
 // told about stable releases.
-const RELEASES_URL = "https://api.github.com/repos/minghinmatthewlam/pi-gui/releases/latest";
-const RELEASES_PAGE = "https://github.com/minghinmatthewlam/pi-gui/releases";
+const RELEASES_URL = "https://api.github.com/repos/smart-kind/bid-workshop/releases/latest";
+const RELEASES_PAGE = "https://github.com/smart-kind/bid-workshop/releases";
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 const INITIAL_DELAY_MS = 15_000; // 15 seconds after launch
@@ -37,7 +37,7 @@ export function showUpdateNotification(
     return;
   }
   const notification = new Notification({
-    title: "pi-gui Release Available",
+    title: "Bid Workshop Release Available",
     body: `Version ${latestVersion} is available (you have ${currentVersion}). Click to view the release.`,
   });
   notification.on("click", () => {
@@ -75,7 +75,7 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
   }
 
   if (res.status === 404) {
-    return { status: "error", message: "No stable pi-gui release has been published yet." };
+    return { status: "error", message: "No stable Bid Workshop release has been published yet." };
   }
   if (!res.ok) {
     return {

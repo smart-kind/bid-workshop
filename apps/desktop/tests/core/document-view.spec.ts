@@ -3,12 +3,10 @@ import { join, resolve } from "node:path";
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import {
   createNamedThread,
-  getApplicationMenuItemInfo,
   launchDesktop,
   makeUserDataDir,
   makeWorkspace,
   selectSidePanel,
-  triggerApplicationMenuItem,
 } from "../helpers/electron-app";
 
 const repoRoot = resolve(__dirname, "../../../..");
@@ -106,43 +104,6 @@ test("a .docx opened from the Files tree renders in the hosted document view", a
       expect(bounds.width).toBeGreaterThan(0);
       expect(bounds.height).toBeGreaterThan(0);
     }
-
-    // --- the editor's built-in AI panel starts hidden, and its own toggle opens it ---
-    const aiDock = documentView.locator(".ai-dock");
-    await expect(aiDock).toHaveClass(/collapsed/, { timeout: 15_000 });
-    // The first `.ai-entry` is the assistant's own toggle; the other three are
-    // one-shot actions that share the class.
-    await documentView.locator("button.ai-entry").first().click();
-    await expect(aiDock).not.toHaveClass(/collapsed/);
-    const expanded = await aiDock.boundingBox();
-    expect(expanded?.width ?? 0).toBeGreaterThan(0);
-
-    // --- the editor's chrome is reported to the host's menu ---
-    const menuItem = await getApplicationMenuItemInfo(harness, "view.document-ai-panel");
-    expect(menuItem).toEqual({
-      id: "view.document-ai-panel",
-      label: "显示文档视图的内置 AI 面板",
-      accelerator: "",
-      parentLabel: "View",
-      // The panel is showing, and the view said so.
-      checked: true,
-    });
-
-    // Turning it off in the editor is reported too, and the menu can turn it
-    // back on: the next boot reads the host's preference.
-    await documentView.locator("button.ai-entry").first().click();
-    await expect(aiDock).toHaveClass(/collapsed/);
-    await expect
-      .poll(
-        async () => (await getApplicationMenuItemInfo(harness, "view.document-ai-panel"))?.checked,
-      )
-      .toBe(false);
-
-    expect(await triggerApplicationMenuItem(harness, "view.document-ai-panel")).toBe(true);
-    await waitForDocumentView(harness.electronApp);
-    await expect(documentView.locator(".ai-dock")).not.toHaveClass(/collapsed/, {
-      timeout: 30_000,
-    });
 
     // --- selecting another file detaches the host from the pane ---
     await tree.locator('.file-workbench__tree-row--file[data-file-path="README.md"]').click();

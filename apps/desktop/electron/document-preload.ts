@@ -1,60 +1,48 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { DOCUMENT_IPC } from "./documents/document-channels";
+import type {
+  DocumentAiChunk,
+  DocumentAiSettings,
+  DocumentAiTurnRequest,
+} from "@bid-workshop/document-ai";
+import { DOCUMENT_IPC, DOCUMENT_PUSH, DOCUMENT_REPORT } from "./documents/document-channels";
 
 /**
  * `window.desktop` for the hosted document editor.
  *
- * The real editor expects the full GenOffice shell bridge, and its mount path
- * touches several members with no optional chaining (`LocaleProvider`'s
- * `onLanguageChanged`, the bootstrap's `getLanguage`/`getTheme`, the App
- * effects' `getRecentFiles`/`getAiSettings`/`onRenamedDocx`/`onOpenDocx`/
- * `onZoteroRequest`, and the three boot consumes). Those are backed here: the
- * consumes read the real pending document from main, everything else reports
- * empty defaults.
+ * Backed for real: the boot handoff (open, blank document), the whole save family
+ * (save in place, Save As, first save, save to an explicit path, recovery copy),
+ * the recent-documents list, comments and revisions through the document itself,
+ * export to HTML and PDF, the menu-command and close-check channels the native
+ * File menu drives, and the AI panel (settings read from pi's own provider
+ * configuration, model turns streamed from the main process).
  *
- * The rest of the documented surface is stubbed so no code path can throw a
- * missing-member TypeError. Save, print, export, AI, Zotero, MCP and recovery
- * features are inert until they get a real host.
+ * What is not backed says so rather than looking like a cancelled dialog: every
+ * member whose contract carries an `error` field returns one. The rest are
+ * members whose only "no" is `null` (a cancelled picker) or `{ ok: false }` with
+ * no field to explain itself, and they are listed with their reasons in
+ * docs/shell-plan.md §七.
  */
-// The hosted editor's own AI panel starts hidden. This app never wires it to a
-// provider, so an open panel would offer something that cannot work. It is a
-// presentation default, not a boundary: the editor's own toggle turns it back
-// on, and the reader's own preference is respected when they already set one.
-/** The host's preference for the editor's AI panel, asked for before boot. */
-const showAiPreference = ((): string | undefined => {
-  try {
-    const answer: unknown = ipcRenderer.sendSync(DOCUMENT_IPC.aiPanelDefault);
-    return typeof answer === "string" ? answer : undefined;
-  } catch {
-    return undefined;
-  }
-})();
-
-try {
-  // Typed by hand: this preload's project has no DOM library, and the storage
-  // belongs to the document's own origin.
-  const storage = (
-    globalThis as {
-      localStorage?: {
-        getItem(key: string): string | null;
-        setItem(key: string, value: string): void;
-      };
-    }
-  ).localStorage;
-  if (storage && (showAiPreference === "0" || showAiPreference === "1")) {
-    // The host decided for this view; the reader's own choice applies to views
-    // that did not carry one.
-    storage.setItem("aidocs.showAi", showAiPreference);
-  } else if (storage && storage.getItem("aidocs.showAi") === null) {
-    storage.setItem("aidocs.showAi", "0");
-  }
-} catch {
-  // Storage can be unavailable (for example on a locked-down profile); the
-  // editor then falls back to its own default rather than failing to boot.
-}
-
 const noop = (): void => {};
 const unsubscribe = (): (() => void) => noop;
+
+/** For members whose contract has an error field: a refusal, not a cancellation. */
+const unsupported = (what: string): { ok: false; error: string } => ({
+  ok: false,
+  error: `${what} is not available in this host.`,
+});
+
+function subscribeArgs<Args extends readonly unknown[]>(
+  channel: string,
+  handler: (...args: Args) => void,
+): () => void {
+  const listener = (_event: Electron.IpcRendererEvent, ...args: unknown[]): void => {
+    handler(...(args as unknown as Args));
+  };
+  ipcRenderer.on(channel, listener);
+  return () => {
+    ipcRenderer.removeListener(channel, listener);
+  };
+}
 
 const desktop = {
   getLanguage: () => Promise.resolve("zh"),
@@ -68,8 +56,9 @@ const desktop = {
   zoteroCommand: () => Promise.resolve({ ok: false, errorCode: "unsupported-command" }),
   onZoteroRequest: unsubscribe,
   respondToZotero: noop,
-  openDocx: () => Promise.resolve(null),
-  openDocxPath: () => Promise.resolve(null),
+  // A cancelled file picker is the only "no" these two can report (see §七).
+  openDocx: () => ipcRenderer.invoke(DOCUMENT_IPC.openDocument, null),
+  openDocxPath: (path: string) => ipcRenderer.invoke(DOCUMENT_IPC.openDocument, path),
   openDocxDecrypt: () => Promise.resolve({ ok: false, reason: "unsupported" }),
   convertAltChunkHtml: () => Promise.resolve(null),
   setDocPassword: () => Promise.resolve({ ok: false }),
@@ -80,44 +69,58 @@ const desktop = {
   consumeAiDocContent: () => Promise.resolve(null),
   consumeHeadlessExport: () => Promise.resolve(null),
   headlessExportDone: noop,
-  createDocument: () => Promise.resolve({ ok: false }),
+  createDocument: () => Promise.resolve(unsupported("Creating a document from the editor")),
   onOpenDocx: unsubscribe,
   onRenamedDocx: unsubscribe,
-  saveDocx: (path: string, bytes: Uint8Array, auto: boolean) =>
-    ipcRenderer.invoke(DOCUMENT_IPC.writeDocument, { mode: "save", path, bytes, auto }),
-  writeRecoveryCopy: () => Promise.resolve({ ok: false }),
+  saveDocx: (path: string, data: ArrayBuffer, auto?: boolean) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.save, path, data, auto === true),
+  writeRecoveryCopy: (path: string, data: ArrayBuffer) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.writeRecovery, path, data),
   onTeardown: unsubscribe,
   respellKick: () => Promise.resolve(),
   spellDiag: noop,
-  saveDocxAs: (name: string, bytes: Uint8Array, sourcePath?: string) =>
-    ipcRenderer.invoke(DOCUMENT_IPC.writeDocument, {
-      mode: "save-as",
-      name,
-      bytes,
-      sourcePath,
-    }),
-  saveDocxNew: (name: string, bytes: Uint8Array) =>
-    ipcRenderer.invoke(DOCUMENT_IPC.writeDocument, { mode: "save-new", name, bytes }),
-  saveDocxTo: (path: string, bytes: Uint8Array, overwrite?: boolean) =>
-    ipcRenderer.invoke(DOCUMENT_IPC.writeDocument, { mode: "save-to", path, bytes, overwrite }),
-  getRecentFiles: () => Promise.resolve([]),
+  saveDocxAs: (defaultName: string, data: ArrayBuffer, sourcePath?: string | null) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.saveAs, defaultName, data, sourcePath ?? null),
+  saveDocxNew: (defaultName: string, data: ArrayBuffer) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.saveNew, defaultName, data),
+  saveDocxTo: (path: string, data: ArrayBuffer, overwrite: boolean) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.saveTo, path, data, overwrite === true),
+  getRecentFiles: () => ipcRenderer.invoke(DOCUMENT_IPC.recentFiles),
   pickImage: () => Promise.resolve(null),
   fontMetrics: () => Promise.resolve(null),
-  getAiSettings: () => Promise.resolve({ provider: "anthropic", providers: {} }),
+  // The panel reads the shell's provider configuration and never writes one back
+  // (there is no provider form in the editor), so `setAiSettings` is the no-op it
+  // has always been — it is not a stub standing in for a missing host.
+  getAiSettings: (): Promise<DocumentAiSettings> => ipcRenderer.invoke(DOCUMENT_IPC.aiGetSettings),
   setAiSettings: noop,
-  print: () => Promise.resolve({ ok: false }),
-  exportPdf: () => Promise.resolve({ ok: false }),
-  exportHtml: () => Promise.resolve({ ok: false }),
-  printPdfBuffer: () => Promise.resolve({ ok: false }),
-  saveMergedPdf: () => Promise.resolve({ ok: false }),
+  print: () => Promise.resolve(unsupported("Printing")),
+  exportPdf: (
+    defaultName: string,
+    pageWidthTwips: number,
+    pageHeightTwips: number,
+    outPath?: string,
+  ) =>
+    ipcRenderer.invoke(
+      DOCUMENT_IPC.exportPdf,
+      defaultName,
+      pageWidthTwips,
+      pageHeightTwips,
+      outPath ?? null,
+    ),
+  exportHtml: (defaultName: string, html: string, outPath?: string) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.exportHtml, defaultName, html, outPath ?? null),
+  printPdfBuffer: () => Promise.resolve(unsupported("Chunked PDF printing")),
+  saveMergedPdf: () => Promise.resolve(unsupported("Merging PDF parts")),
   pickExportImagesTarget: () => Promise.resolve(null),
-  takeExportPdf: () => Promise.resolve({ ok: false }),
-  writeExportImage: () => Promise.resolve({ ok: false }),
-  saveImageAs: () => Promise.resolve({ ok: false }),
+  takeExportPdf: () => Promise.resolve(unsupported("Exporting images")),
+  writeExportImage: () => Promise.resolve(unsupported("Exporting images")),
+  saveImageAs: () => Promise.resolve(unsupported("Saving a picture")),
   onViewImage: unsubscribe,
-  aiChat: () => Promise.resolve({ ok: false }),
-  aiStream: noop,
-  aiStreamCancel: noop,
+  // The renderer drives the panel through the stream alone; the one-shot `aiChat`
+  // member is never called, so it stays a refusal rather than unused IPC.
+  aiChat: () => Promise.resolve(unsupported("The editor's one-shot chat")),
+  aiStream: (request: DocumentAiTurnRequest) => ipcRenderer.invoke(DOCUMENT_IPC.aiStream, request),
+  aiStreamCancel: (requestId: string) => ipcRenderer.invoke(DOCUMENT_IPC.aiStreamCancel, requestId),
   aiGskStatus: () => Promise.resolve({ loggedIn: false }),
   aiGskLogin: noop,
   webSearch: () => Promise.resolve({ results: [], method: "error", error: "unavailable" }),
@@ -135,14 +138,17 @@ const desktop = {
   openNewTab: noop,
   listDocsTabs: () => Promise.resolve([]),
   focusDocsTab: noop,
-  onAiStream: unsubscribe,
-  onMenuCommand: unsubscribe,
-  onCloseCheck: unsubscribe,
-  reportCloseCheck: noop,
-  onCloseSaveRequest: unsubscribe,
-  reportCloseSaveResult: noop,
-  reportViewMenuState: (state: unknown) =>
-    ipcRenderer.send(DOCUMENT_IPC.reportViewMenuState, state),
+  onAiStream: (handler: (chunk: DocumentAiChunk) => void) =>
+    subscribeArgs<[DocumentAiChunk]>(DOCUMENT_PUSH.aiStreamChunk, handler),
+  onMenuCommand: (handler: (command: string, payload?: string) => void) =>
+    subscribeArgs<[string, string?]>(DOCUMENT_PUSH.menuCommand, handler),
+  onCloseCheck: (handler: () => void) => subscribeArgs<[]>(DOCUMENT_PUSH.closeCheck, handler),
+  reportCloseCheck: (state: unknown) => ipcRenderer.send(DOCUMENT_REPORT.closeCheck, state),
+  onCloseSaveRequest: (handler: () => void) =>
+    subscribeArgs<[]>(DOCUMENT_PUSH.closeSaveRequest, handler),
+  reportCloseSaveResult: (ok: boolean) =>
+    ipcRenderer.send(DOCUMENT_REPORT.closeSaveResult, ok === true),
+  reportViewMenuState: noop,
 };
 
 contextBridge.exposeInMainWorld("desktop", desktop);

@@ -143,6 +143,23 @@ async function gitText(
   return result.stdout.toString("utf8");
 }
 
+/**
+ * The repository a folder belongs to, or null when it belongs to none.
+ *
+ * `git` rejects with git's own stderr for anything above exit code 1, and that
+ * text ("fatal: not a git repository ...") is written for someone driving git,
+ * not for someone who picked a folder of documents and opened the review panel.
+ * Every caller here only needs to know whether there is a repository at all, so
+ * the answer is a value and the wording stays ours.
+ */
+async function repositoryRootOf(path: string): Promise<string | null> {
+  try {
+    return (await gitText(path, ["rev-parse", "--show-toplevel"])).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 async function resolveRevision(cwd: string, ref: string, type: "commit" | "tree" = "commit") {
   try {
     return (
@@ -428,7 +445,13 @@ export async function createGitReview(
   const maxGitBytes = limits.maxGitBytes ?? MAX_GIT_BYTES;
   try {
     if (scope.kind !== "turn") {
-      const topLevel = (await gitText(checkoutPath, ["rev-parse", "--show-toplevel"])).trim();
+      const topLevel = await repositoryRootOf(checkoutPath);
+      if (topLevel === null)
+        return issue(
+          "unavailable",
+          "not-a-repository",
+          "This folder is not under version control, so there are no changes to review.",
+        );
       if ((await realpath(checkoutPath)) !== (await realpath(topLevel)))
         return issue(
           "unavailable",

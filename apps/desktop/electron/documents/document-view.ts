@@ -1,15 +1,15 @@
-import { randomUUID } from "node:crypto";
-import { copyFile, readFile, realpath, stat } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
-import { dialog, ipcMain, protocol, WebContentsView, type BrowserWindow } from "electron";
-import { DOCUMENT_IPC, DOCUMENT_VIEW_SCHEME } from "./document-channels";
+import { protocol, webContents, WebContentsView, type BrowserWindow } from "electron";
+import { DOCUMENT_PUSH, DOCUMENT_VIEW_SCHEME } from "./document-channels";
+import { registerDocumentAiIpc } from "../ipc/document-ai-ipc";
 import {
-  atomicWriteDocument,
-  hashFile,
-  isExternallyModified,
-  readDiskFileState,
-  type DiskFileState,
-} from "./document-write";
+  prepareDocumentForLeave,
+  registerDocumentViewIpc,
+  sendDocumentMenuCommand,
+  type DocumentViewIpcTarget,
+} from "../ipc/document-view-ipc";
 
 /**
  * The document editor (`packages/document-editor`) is a standalone static
@@ -47,46 +47,6 @@ export interface DocumentViewOwnerOptions {
   /** Keep the renderer live while its window is hidden (tests run background windows). */
   readonly backgroundThrottling?: boolean;
   readonly onDiagnostic?: (message: string) => void;
-  /** Whether a new view starts with the editor's built-in AI panel showing. */
-  readonly aiPanelDefault?: () => boolean;
-  /** The view reporting what its own chrome is doing, for the host's menu. */
-  readonly onViewMenuState?: (state: DocumentViewMenuState) => void;
-  /**
-   * Refuse a write the workspace's zones do not allow. The editor never decides
-   * this: it asks, and the host answers.
-   */
-  readonly assertWritableDocument?: (absolutePath: string) => Promise<void>;
-  /** Where the shell asks for a target when the editor saves a document elsewhere. */
-  readonly chooseSavePath?: (input: {
-    readonly suggestedName: string;
-    readonly sourcePath?: string;
-  }) => Promise<string | undefined>;
-}
-
-/** What the editor asks the shell to do with a document it has serialized. */
-export interface WriteDocumentRequest {
-  readonly mode: "save" | "save-as" | "save-new" | "save-to";
-  readonly path?: string;
-  readonly name?: string;
-  readonly sourcePath?: string;
-  readonly overwrite?: boolean;
-  readonly bytes: Uint8Array;
-  /** Autosave: a conflict is reported, never prompted. */
-  readonly auto?: boolean;
-}
-
-export interface WriteDocumentResult {
-  readonly ok: boolean;
-  readonly path?: string;
-  readonly error?: string;
-  /** `external-modified` when the file changed on disk since it was opened. */
-  readonly reason?: string;
-}
-
-/** What the hosted editor tells the host about its own chrome. */
-export interface DocumentViewMenuState {
-  readonly aiSidebar?: boolean;
-  readonly darkCanvas?: boolean;
 }
 
 interface Handoff {
@@ -101,7 +61,6 @@ interface Pending {
 
 interface Entry {
   readonly view: WebContentsView;
-  readonly window: BrowserWindow;
   /** the document currently shown, null while hidden */
   currentPath: string | null;
   /** what the next `consume-pending-open` from this view returns */
@@ -125,65 +84,100 @@ export class DocumentViewOwner {
   private readonly preloadPath: string;
   private readonly backgroundThrottling: boolean;
   private readonly onDiagnostic: (message: string) => void;
-  private readonly aiPanelDefault: () => boolean;
-  private readonly onViewMenuState: (state: DocumentViewMenuState) => void;
-  private readonly assertWritableDocument: (absolutePath: string) => Promise<void>;
-  private readonly chooseSavePath?: DocumentViewOwnerOptions["chooseSavePath"];
-  /** The last state a view reported, so a menu can start from it. */
-  reportedViewMenuState: DocumentViewMenuState | null = null;
-  /** Disk state of each document as we last read or wrote it. */
-  private readonly diskStates = new Map<string, DiskFileState>();
-  /** Paths each renderer is allowed to overwrite: what it opened, plus what it chose. */
-  private readonly writablePaths = new Map<number, Set<string>>();
 
   constructor(options: DocumentViewOwnerOptions) {
     this.distRoot = options.distRoot;
     this.preloadPath = options.preloadPath;
     this.backgroundThrottling = options.backgroundThrottling ?? true;
     this.onDiagnostic = options.onDiagnostic ?? (() => {});
-    this.aiPanelDefault = options.aiPanelDefault ?? (() => false);
-    this.onViewMenuState = options.onViewMenuState ?? (() => {});
-    this.assertWritableDocument = options.assertWritableDocument ?? (async () => {});
-    this.chooseSavePath = options.chooseSavePath;
   }
 
   /** Register the doc preload's boot IPC. Called once before any view is created. */
   installIpc(): void {
-    ipcMain.handle(DOCUMENT_IPC.consumePendingOpen, (event) =>
-      this.pendingDocument(event.sender.id),
-    );
-    ipcMain.handle(DOCUMENT_IPC.consumeNewBlank, () => false);
-    ipcMain.handle(DOCUMENT_IPC.consumeAiDocContent, () => null);
-    // Answered synchronously at boot: the preload has to know before the editor
-    // renders, and a reload must see the host's current choice, not the one the
-    // view was first created with.
-    ipcMain.handle(DOCUMENT_IPC.writeDocument, (event, payload: unknown) =>
-      this.writeDocument(event.sender.id, payload),
-    );
-    ipcMain.on(DOCUMENT_IPC.aiPanelDefault, (event) => {
-      event.returnValue = this.aiPanelDefault() ? "1" : "0";
+    registerDocumentViewIpc({
+      pendingDocumentForSender: (senderId) => this.pendingDocument(senderId),
+      hasSender: (senderId) => this.entryForSender(senderId) !== undefined,
+      documentPathForSender: (senderId) => this.entryForSender(senderId)?.currentPath ?? null,
+      noteSavedPath: (senderId, absolutePath) => {
+        const entry = this.entryForSender(senderId);
+        if (entry) entry.currentPath = absolutePath;
+      },
+      openDocumentForSender: (senderId, absolutePath) =>
+        this.openDocumentForSender(senderId, absolutePath),
     });
-    ipcMain.on(DOCUMENT_IPC.reportViewMenuState, (_event, state: unknown) => {
-      const parsed = parseViewMenuState(state);
-      if (!parsed) return;
-      this.reportedViewMenuState = parsed;
-      this.onViewMenuState(parsed);
-    });
+    registerDocumentAiIpc({ hasSender: (senderId) => this.entryForSender(senderId) !== undefined });
   }
 
-  /** Show `input.absolutePath` in `window`'s document view at `input.rect`, creating the view on first use. */
-  show(window: BrowserWindow, input: ShowDocumentInput): void {
-    if (window.isDestroyed()) return;
+  /**
+   * Runs a document menu command (Save, Save As, …) on the document view the
+   * user is looking at. A command with no focused document view is dropped: the
+   * File menu's document items belong to the editor, not to the app renderer.
+   */
+  sendMenuCommand(command: string): void {
+    sendDocumentMenuCommand(
+      { hasSender: (senderId) => this.entryForSender(senderId) !== undefined },
+      command,
+    );
+  }
+
+  /**
+   * Starts a blank document in the view the user is looking at, after giving the
+   * document already open there its chance to save. Returns false when there is
+   * no document view to start one in, or when that document could not be saved.
+   */
+  async startNewDocument(): Promise<boolean> {
+    const focused = webContents.getFocusedWebContents();
+    const entry = focused ? this.entryForSender(focused.id) : undefined;
+    if (!entry || !focused) return false;
+    if (!(await this.leavesCleanly(entry, null))) return false;
+    focused.send(DOCUMENT_PUSH.menuCommand, "new");
+    return true;
+  }
+
+  /**
+   * File > Open: gives the document already open in this view its chance to save,
+   * then mints the handoff the renderer loads the new one from. Returns null when
+   * the view is unknown or the open document could not be saved — the same
+   * one-shot URL the boot handoff uses, so the renderer fetches it the same way.
+   */
+  async openDocumentForSender(
+    senderId: number,
+    absolutePath: string,
+  ): Promise<PendingDocument | null> {
+    const entry = this.entryForSender(senderId);
+    if (!entry) return null;
+    if (!(await this.leavesCleanly(entry, absolutePath))) return null;
+    if (entry.pending) this.handoffs.delete(entry.pending.token);
+    const token = randomUUID();
+    this.handoffs.set(token, { absolutePath });
+    const name = path.basename(absolutePath);
+    entry.pending = { path: absolutePath, name, token };
+    entry.currentPath = absolutePath;
+    return {
+      path: absolutePath,
+      name,
+      dataUrl: `${DOCUMENT_VIEW_SCHEME}://app/_handoff/${token}`,
+      hash: await this.hashOf(absolutePath),
+    };
+  }
+
+  /**
+   * Show `input.absolutePath` in `window`'s document view at `input.rect`,
+   * creating the view on first use. Returns false when another document was
+   * already open and could not be saved first, in which case nothing changes.
+   */
+  async show(window: BrowserWindow, input: ShowDocumentInput): Promise<boolean> {
+    if (window.isDestroyed()) return false;
     const entry = this.entryFor(window);
     if (entry.currentPath === input.absolutePath && entry.pending) {
       entry.view.setBounds(rectToBounds(input.rect));
       entry.view.setVisible(true);
-      return;
+      return true;
     }
+    if (!(await this.leavesCleanly(entry, input.absolutePath))) return false;
     if (entry.pending) this.handoffs.delete(entry.pending.token);
     const token = randomUUID();
     this.handoffs.set(token, { absolutePath: input.absolutePath });
-    this.grantWrite(entry.view.webContents.id, input.absolutePath);
     entry.pending = {
       path: input.absolutePath,
       name: path.basename(input.absolutePath),
@@ -203,102 +197,18 @@ export class DocumentViewOwner {
           this.onDiagnostic(`load document view failed: ${stringify(error)}`),
         );
     }
+    return true;
   }
 
   /**
-   * Write a document the editor serialized. The shell decides: the workspace's
-   * zones are checked first, a change on disk since the document was opened
-   * aborts the write, and the file that was there is kept as a timestamped
-   * backup before the new bytes take its place.
+   * Hide the view when the pane goes away or a non-document file is selected.
+   * Returns false when the document has unsaved work that could not be saved;
+   * the view then stays exactly as it is rather than dropping the edits.
    */
-  async writeDocument(senderId: number, payload: unknown): Promise<WriteDocumentResult> {
-    const request = parseWriteDocumentRequest(payload);
-    if (!request) return { ok: false, error: "无法识别的保存请求" };
-    const entry = this.entryForSender(senderId);
-
-    try {
-      if (request.mode === "save-new") {
-        return { ok: false, error: "新文档还没有位置：请先另存为，选择一个工作区内的目录" };
-      }
-
-      let target: string | undefined = request.path;
-      if (request.mode === "save-as") {
-        target = await this.chooseSavePath?.({
-          suggestedName: request.name ?? "未命名.docx",
-          ...(request.sourcePath ? { sourcePath: request.sourcePath } : {}),
-        });
-        // Choosing a path is what authorizes it: the renderer may save there,
-        // and nowhere else, from now on.
-        if (target) this.grantWrite(senderId, target);
-      }
-      if (!target) return { ok: false, error: "没有选择保存位置" };
-
-      // Only a path this renderer opened or chose may be overwritten.
-      if (!this.canWrite(senderId, target)) {
-        return { ok: false, error: "该路径不是本编辑器打开或另存的文档，拒绝写入" };
-      }
-      await this.assertWritableDocument(target);
-
-      const existing = await stat(target).catch(() => null);
-      if (existing?.isFile() && (await isExternallyModified(this.diskStates.get(target), target))) {
-        // Autosave must never clobber another program's edits silently; a manual
-        // save asks, and only an explicit yes lands the write.
-        if (request.auto === true) return { ok: false, reason: "external-modified" };
-        const choice = entry
-          ? await dialog.showMessageBox(entry.window, {
-              type: "warning",
-              message: "文件在编辑器之外被改动过",
-              detail: `${target}\n覆盖会丢掉那部分改动；取消则会保留磁盘上的版本。`,
-              buttons: ["覆盖", "取消"],
-              defaultId: 0,
-              cancelId: 1,
-              noLink: true,
-            })
-          : { response: 1 };
-        if (choice.response !== 0) return { ok: false, reason: "external-modified" };
-      }
-      if (existing?.isFile() && request.mode === "save-to" && request.overwrite === false) {
-        return { ok: false, error: `${target} 已存在` };
-      }
-
-      // A copy of what was there, so an in-place save is undoable by hand.
-      if (existing?.isFile()) await backupFile(target);
-      await atomicWriteDocument(target, Buffer.from(request.bytes));
-      const state = await readDiskFileState(target);
-      if (state) this.diskStates.set(target, state);
-      return { ok: true, path: target };
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  }
-
-  /** Grant one renderer the right to overwrite one path, and remember its state. */
-  private grantWrite(senderId: number, filePath: string): void {
-    const allowed = this.writablePaths.get(senderId) ?? new Set<string>();
-    allowed.add(filePath);
-    this.writablePaths.set(senderId, allowed);
-    void readDiskFileState(filePath)
-      .then((state) => {
-        if (state) this.diskStates.set(filePath, state);
-      })
-      .catch(() => undefined);
-  }
-
-  private canWrite(senderId: number, filePath: string): boolean {
-    return this.writablePaths.get(senderId)?.has(filePath) === true;
-  }
-
-  /** Re-boot every live view so it picks up the host's current preferences. */
-  reloadViews(): void {
-    for (const entry of this.entries.values()) {
-      if (entry.view.webContents.getURL()) entry.view.webContents.reload();
-    }
-  }
-
-  /** Hide the view when the pane goes away or a non-document file is selected. */
-  hide(window: BrowserWindow): void {
+  async hide(window: BrowserWindow): Promise<boolean> {
     const entry = this.entries.get(window.id);
-    if (!entry || window.isDestroyed()) return;
+    if (!entry || window.isDestroyed()) return true;
+    if (!(await this.leavesCleanly(entry, null))) return false;
     if (entry.pending) this.handoffs.delete(entry.pending.token);
     entry.pending = null;
     entry.currentPath = null;
@@ -306,6 +216,19 @@ export class DocumentViewOwner {
     // `View` exposes no visibility getter; zeroing the bounds makes "hidden"
     // observable (and a zero-sized view paints nothing even if still attached).
     entry.view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+    return true;
+  }
+
+  /** True when `entry` may move on: nothing unsaved, or its save went through. */
+  private leavesCleanly(entry: Entry, nextPath: string | null): Promise<boolean> {
+    return prepareDocumentForLeave(entry.view.webContents, this.viewLookup(), nextPath);
+  }
+
+  private viewLookup(): Pick<DocumentViewIpcTarget, "hasSender" | "documentPathForSender"> {
+    return {
+      hasSender: (senderId) => this.entryForSender(senderId) !== undefined,
+      documentPathForSender: (senderId) => this.entryForSender(senderId)?.currentPath ?? null,
+    };
   }
 
   /** Detach the view without closing its webContents (closing can wedge the UI thread). */
@@ -328,7 +251,7 @@ export class DocumentViewOwner {
       path: pending.path,
       name: pending.name,
       dataUrl: `${DOCUMENT_VIEW_SCHEME}://app/_handoff/${pending.token}`,
-      hash: await hashFile(pending.path).catch(() => ""),
+      hash: await this.hashOf(pending.path),
     };
   }
 
@@ -337,6 +260,17 @@ export class DocumentViewOwner {
       if (entry.view.webContents.id === senderId) return entry;
     }
     return undefined;
+  }
+
+  private async hashOf(absolutePath: string): Promise<string> {
+    try {
+      return createHash("sha256")
+        .update(await readFile(absolutePath))
+        .digest("hex");
+    } catch (error: unknown) {
+      this.onDiagnostic(`document hash failed: ${stringify(error)}`);
+      return "";
+    }
   }
 
   private entryFor(window: BrowserWindow): Entry {
@@ -360,7 +294,7 @@ export class DocumentViewOwner {
       this.onDiagnostic(`document view renderer gone: ${details.reason}`);
     });
     window.contentView.addChildView(view);
-    const entry: Entry = { view, window, currentPath: null, pending: null };
+    const entry: Entry = { view, currentPath: null, pending: null };
     this.entries.set(window.id, entry);
     return entry;
   }
@@ -502,40 +436,4 @@ export function documentSchemePrivileges(): Electron.CustomScheme {
 /** Install the protocol handler. Call once after `app.whenReady`. */
 export function installDocumentProtocol(owner: DocumentViewOwner): void {
   protocol.handle(DOCUMENT_VIEW_SCHEME, (request) => owner.assetResponse(request.url));
-}
-
-/** The editor's chrome report, narrowed to the fields the host understands. */
-export function parseViewMenuState(value: unknown): DocumentViewMenuState | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const state = value as { aiSidebar?: unknown; darkCanvas?: unknown };
-  const parsed: { aiSidebar?: boolean; darkCanvas?: boolean } = {};
-  if (typeof state.aiSidebar === "boolean") parsed.aiSidebar = state.aiSidebar;
-  if (typeof state.darkCanvas === "boolean") parsed.darkCanvas = state.darkCanvas;
-  return Object.keys(parsed).length > 0 ? parsed : undefined;
-}
-
-function parseWriteDocumentRequest(value: unknown): WriteDocumentRequest | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const request = value as Record<string, unknown>;
-  const mode = request.mode;
-  if (mode !== "save" && mode !== "save-as" && mode !== "save-new" && mode !== "save-to") {
-    return undefined;
-  }
-  const bytes = request.bytes;
-  if (!(bytes instanceof Uint8Array) && !(bytes instanceof ArrayBuffer)) return undefined;
-  return {
-    mode,
-    bytes: bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes),
-    ...(typeof request.path === "string" ? { path: request.path } : {}),
-    ...(typeof request.name === "string" ? { name: request.name } : {}),
-    ...(typeof request.sourcePath === "string" ? { sourcePath: request.sourcePath } : {}),
-    ...(typeof request.overwrite === "boolean" ? { overwrite: request.overwrite } : {}),
-    ...(typeof request.auto === "boolean" ? { auto: request.auto } : {}),
-  };
-}
-
-/** Keep what was on disk beside it, under a name that says when it was set aside. */
-async function backupFile(filePath: string): Promise<void> {
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  await copyFile(filePath, `${filePath}.bak-${stamp}`);
 }

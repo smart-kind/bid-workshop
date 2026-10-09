@@ -1077,13 +1077,25 @@ async function saveOnce(
     }
     // Equal doc: skip the rewrite so undo history, caret and scroll survive.
     if (!unchanged) {
-      editor.commands.setContent(rebasedPm as never)
-      resetEditorHistory(editor)
-      const chain = editor
-        .chain()
-        .setTextSelection(Math.min(selectionPos, editor.state.doc.content.size))
-      if (!auto) chain.scrollIntoView()
-      chain.run()
+      // Reloading the saved bytes replaces the whole document, and with Track
+      // Changes on the recorder would take that one replacement as an edit to
+      // every run — hundreds of revisions for a document whose only change was a
+      // typed word (docs/shell-plan.md §8.6). The rebase is the editor's own
+      // bookkeeping, so recording is switched off for it.
+      const storage = editor.storage.trackChanges as { enabled: boolean } | undefined
+      const wasRecording = storage?.enabled ?? false
+      if (storage) storage.enabled = false
+      try {
+        editor.commands.setContent(rebasedPm as never)
+        resetEditorHistory(editor)
+        const chain = editor
+          .chain()
+          .setTextSelection(Math.min(selectionPos, editor.state.doc.content.size))
+        if (!auto) chain.scrollIntoView()
+        chain.run()
+      } finally {
+        if (storage) storage.enabled = wasRecording
+      }
     }
     ctx.setDocCss(docStyleCss(reparsed))
     ctx.setDoc((prev) =>

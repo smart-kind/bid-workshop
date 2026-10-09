@@ -11,7 +11,7 @@ const outputDir = path.join(desktopDir, "build", "native");
 const helpers = [
   {
     sourcePath: path.join(desktopDir, "resources", "notification-status-helper.swift"),
-    outputPath: path.join(outputDir, "pi-gui-notification-status-helper"),
+    outputPath: path.join(outputDir, "bid-workshop-notification-status-helper"),
   },
 ];
 

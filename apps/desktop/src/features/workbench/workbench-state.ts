@@ -24,12 +24,20 @@ export type WorkbenchAction =
   | { readonly type: "set-changes"; readonly changes: TaskWorkbenchTemplate["changes"] }
   | { readonly type: "open-file"; readonly file: WorkspaceFileReference };
 
-/** A task without a saved layout keeps the side workspace closed until the user opens it. */
+/**
+ * A task without a saved layout keeps the side workspace closed until the user
+ * opens it, and opens on the file tree.
+ *
+ * The file tree is what someone who just picked a folder of documents is looking
+ * for; the diff is for reviewing what the agent edited, which is a later step.
+ * The panel used to open on Changes, which for a folder that is not a repository
+ * meant greeting that user with git's own complaint about their folder.
+ */
 export function initialWorkbenchView(workspaceId: string): TaskWorkbenchTemplate {
   return {
     visibility: "hidden",
-    tools: [{ kind: "changes" }],
-    selection: { kind: "tool", toolId: "changes" },
+    tools: [{ kind: "files" }],
+    selection: { kind: "tool", toolId: "files" },
     files: { workspaceId, tabs: EMPTY_FILE_TABS },
     changes: { workspaceId, selectedPath: null, scope: { kind: "uncommitted" } },
   };

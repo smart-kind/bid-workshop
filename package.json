@@ -23,7 +23,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:desktop-unit": "playwright test -c apps/desktop/playwright.config.ts apps/desktop/tests/unit",
-    "build:shared": "pnpm --filter @bid-workshop/session-driver build && pnpm --filter @bid-workshop/catalogs build && pnpm --filter @bid-workshop/extension-ui build && pnpm --filter @bid-workshop/pi-sdk-driver build"
+    "build:shared": "pnpm --filter @bid-workshop/session-driver build && pnpm --filter @bid-workshop/catalogs build && pnpm --filter @bid-workshop/extension-ui build && pnpm --filter @bid-workshop/document-service build && pnpm --filter @bid-workshop/document-ai build && pnpm --filter @bid-workshop/pi-sdk-driver build"
   },
   "devDependencies": {
     "@bid-workshop/extension-ui": "workspace:*",

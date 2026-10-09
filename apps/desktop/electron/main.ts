@@ -39,6 +39,8 @@ import {
   documentSchemePrivileges,
   installDocumentProtocol,
 } from "./documents/document-view";
+import { readDocumentText } from "@bid-workshop/document-service";
+import { createDocumentRuntimeExtension } from "./documents/document-runtime";
 import { ReviewOwner } from "./workbench/review-owner";
 import { registerDesktopIpc } from "./ipc/register-desktop-ipc";
 import {
@@ -107,12 +109,6 @@ const TURN_CAPTURE_BACKSTOP_MS = 10_000;
 let store: DesktopAppStore;
 let extensionViewOwner: DesktopExtensionViewOwner | undefined;
 let documentViewOwner: DocumentViewOwner | undefined;
-
-/** Whether a document view starts with the editor's built-in AI panel showing. */
-let documentAiPanelDefault = false;
-
-/** The View menu item that reflects, and sets, that default. */
-const DOCUMENT_AI_MENU_ID = "view.document-ai-panel";
 let windowOwner: WindowOwner;
 const themeManager = new ThemeManager();
 let mainWindow: BrowserWindow | null = null;
@@ -899,6 +895,32 @@ function installApplicationMenu(): void {
           },
         },
         { type: "separator" },
+        {
+          label: "New Document",
+          accelerator: "Command+Alt+N",
+          click: () => {
+            const owner = documentViewOwner;
+            if (!owner) return;
+            owner.startNewDocument().catch((error: unknown) => {
+              console.error("[main] startNewDocument failed", error);
+            });
+          },
+        },
+        {
+          label: "Save Document",
+          accelerator: "CommandOrControl+S",
+          click: () => {
+            documentViewOwner?.sendMenuCommand("save");
+          },
+        },
+        {
+          label: "Save Document As…",
+          accelerator: "CommandOrControl+Shift+S",
+          click: () => {
+            documentViewOwner?.sendMenuCommand("save-as");
+          },
+        },
+        { type: "separator" },
         { role: "close" },
       ],
     },
@@ -917,21 +939,6 @@ function installApplicationMenu(): void {
           click: () => BrowserWindow.getFocusedWindow()?.webContents.reloadIgnoringCache(),
         },
         { role: "toggleDevTools" },
-        { type: "separator" },
-        {
-          // A presentation switch, not a boundary: the panel is the editor's
-          // own, and this only decides whether it is showing to begin with.
-          id: DOCUMENT_AI_MENU_ID,
-          label: "显示文档视图的内置 AI 面板",
-          type: "checkbox",
-          checked: documentAiPanelDefault,
-          click: (item) => {
-            documentAiPanelDefault = item.checked;
-            // A live view is booted already; reload it so it reads the new
-            // preference the same way a freshly opened one would.
-            documentViewOwner?.reloadViews();
-          },
-        },
         { type: "separator" },
         { role: "resetZoom" },
         { role: "zoomIn" },
@@ -1044,26 +1051,6 @@ app
       // its parse/render work there, as the app window already does.
       backgroundThrottling: windowTestMode !== "background",
       onDiagnostic: (message) => console.error("[document-view]", message),
-      aiPanelDefault: () => documentAiPanelDefault,
-      // The editor asks; the shell answers. A read-only zone refuses here, and
-      // Save As is the shell's dialog rather than the editor's.
-      assertWritableDocument: (absolutePath) => store.assertWritableDocument(absolutePath),
-      chooseSavePath: async ({ suggestedName, sourcePath }) => {
-        const parent = BrowserWindow.getFocusedWindow() ?? undefined;
-        const result = await dialog.showSaveDialog(parent as BrowserWindow, {
-          defaultPath: sourcePath
-            ? path.join(path.dirname(sourcePath), suggestedName)
-            : suggestedName,
-          filters: [{ name: "Word", extensions: ["docx"] }],
-        });
-        return result.canceled ? undefined : result.filePath;
-      },
-      onViewMenuState: (state) => {
-        // The view's own chrome decides what the menu shows; the menu decides
-        // what the next view starts with.
-        const item = Menu.getApplicationMenu()?.getMenuItemById(DOCUMENT_AI_MENU_ID);
-        if (item && typeof state.aiSidebar === "boolean") item.checked = state.aiSidebar;
-      },
     });
     documentView.installIpc();
     installDocumentProtocol(documentView);
@@ -1099,6 +1086,12 @@ app
               return undefined;
             }
           }),
+        },
+        {
+          name: "pi-gui-documents",
+          displayName: "Documents",
+          description: "Lets pi read, create and change Word documents in the thread's folder",
+          factory: createDocumentRuntimeExtension(),
         },
       ],
     };
@@ -1153,6 +1146,8 @@ app
             runOrchestrationRuntimeToolForTest(orchestrationRuntimeBridge, input),
           runScheduledTaskRuntimeTool: (input: ScheduledTaskRuntimeToolTestInput) =>
             runScheduledTaskRuntimeToolForTest(scheduledTaskRuntimeBridge, input),
+          readDocumentTextForTest: async (filePath: string) =>
+            readDocumentText(new Uint8Array(await readFile(filePath))),
           fireDueScheduledTasks: (nowIso?: string) =>
             store.fireDueScheduledTasks(nowIso ? new Date(nowIso) : undefined),
           setDeferredThreadTitleMode: () => {
