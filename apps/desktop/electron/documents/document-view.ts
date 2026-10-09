@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, realpath, stat } from "node:fs/promises";
-import path from "node:path";
+import { copyFile, readFile, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
+import path, { dirname, join } from "node:path";
 import { ipcMain, protocol, WebContentsView, type BrowserWindow } from "electron";
 import { DOCUMENT_IPC, DOCUMENT_VIEW_SCHEME } from "./document-channels";
 
@@ -44,6 +44,34 @@ export interface DocumentViewOwnerOptions {
   readonly aiPanelDefault?: () => boolean;
   /** The view reporting what its own chrome is doing, for the host's menu. */
   readonly onViewMenuState?: (state: DocumentViewMenuState) => void;
+  /**
+   * Refuse a write the workspace's zones do not allow. The editor never decides
+   * this: it asks, and the host answers.
+   */
+  readonly assertWritableDocument?: (absolutePath: string) => Promise<void>;
+  /** Where the shell asks for a target when the editor saves a document elsewhere. */
+  readonly chooseSavePath?: (input: {
+    readonly suggestedName: string;
+    readonly sourcePath?: string;
+  }) => Promise<string | undefined>;
+}
+
+/** What the editor asks the shell to do with a document it has serialized. */
+export interface WriteDocumentRequest {
+  readonly mode: "save" | "save-as" | "save-new" | "save-to";
+  readonly path?: string;
+  readonly name?: string;
+  readonly sourcePath?: string;
+  readonly overwrite?: boolean;
+  readonly bytes: Uint8Array;
+}
+
+export interface WriteDocumentResult {
+  readonly ok: boolean;
+  readonly path?: string;
+  readonly error?: string;
+  /** `external-modified` when the file changed on disk since it was opened. */
+  readonly reason?: string;
 }
 
 /** What the hosted editor tells the host about its own chrome. */
@@ -89,8 +117,12 @@ export class DocumentViewOwner {
   private readonly onDiagnostic: (message: string) => void;
   private readonly aiPanelDefault: () => boolean;
   private readonly onViewMenuState: (state: DocumentViewMenuState) => void;
+  private readonly assertWritableDocument: (absolutePath: string) => Promise<void>;
+  private readonly chooseSavePath?: DocumentViewOwnerOptions["chooseSavePath"];
   /** The last state a view reported, so a menu can start from it. */
   reportedViewMenuState: DocumentViewMenuState | null = null;
+  /** Content digest of each document as it was opened, to notice outside edits. */
+  private readonly openedDigests = new Map<string, string>();
 
   constructor(options: DocumentViewOwnerOptions) {
     this.distRoot = options.distRoot;
@@ -99,6 +131,8 @@ export class DocumentViewOwner {
     this.onDiagnostic = options.onDiagnostic ?? (() => {});
     this.aiPanelDefault = options.aiPanelDefault ?? (() => false);
     this.onViewMenuState = options.onViewMenuState ?? (() => {});
+    this.assertWritableDocument = options.assertWritableDocument ?? (async () => {});
+    this.chooseSavePath = options.chooseSavePath;
   }
 
   /** Register the doc preload's boot IPC. Called once before any view is created. */
@@ -111,6 +145,9 @@ export class DocumentViewOwner {
     // Answered synchronously at boot: the preload has to know before the editor
     // renders, and a reload must see the host's current choice, not the one the
     // view was first created with.
+    ipcMain.handle(DOCUMENT_IPC.writeDocument, (_event, payload: unknown) =>
+      this.writeDocument(payload),
+    );
     ipcMain.on(DOCUMENT_IPC.aiPanelDefault, (event) => {
       event.returnValue = this.aiPanelDefault() ? "1" : "0";
     });
@@ -134,6 +171,7 @@ export class DocumentViewOwner {
     if (entry.pending) this.handoffs.delete(entry.pending.token);
     const token = randomUUID();
     this.handoffs.set(token, { absolutePath: input.absolutePath });
+    this.noteOpenedDocument(input.absolutePath);
     entry.pending = {
       path: input.absolutePath,
       name: path.basename(input.absolutePath),
@@ -153,6 +191,76 @@ export class DocumentViewOwner {
           this.onDiagnostic(`load document view failed: ${stringify(error)}`),
         );
     }
+  }
+
+  /**
+   * Write a document the editor serialized. The shell decides: the workspace's
+   * zones are checked first, a change on disk since the document was opened
+   * aborts the write, and the file that was there is kept as a timestamped
+   * backup before the new bytes take its place.
+   */
+  async writeDocument(payload: unknown): Promise<WriteDocumentResult> {
+    const request = parseWriteDocumentRequest(payload);
+    if (!request) return { ok: false, error: "无法识别的保存请求" };
+
+    try {
+      if (request.mode === "save-new") {
+        return {
+          ok: false,
+          error: "新文档还没有位置：请先另存为，选择一个工作区内的目录",
+        };
+      }
+      const target =
+        request.mode === "save-as"
+          ? await this.chooseSavePath?.({
+              suggestedName: request.name ?? "未命名.docx",
+              ...(request.sourcePath ? { sourcePath: request.sourcePath } : {}),
+            })
+          : request.path;
+      if (!target) return { ok: false, error: "没有选择保存位置" };
+
+      await this.assertWritableDocument(target);
+
+      const existing = await stat(target).catch(() => null);
+      if (existing?.isFile() && request.mode !== "save-to") {
+        // The editor holds the bytes it loaded; if the file moved underneath it,
+        // writing would silently drop whatever else changed it.
+        const opened = this.digestFor(target);
+        if (opened && opened !== (await digestFile(target))) {
+          return {
+            ok: false,
+            reason: "external-modified",
+            error: "文件在编辑器之外被改动过，未覆盖；请重新打开后再保存",
+          };
+        }
+      }
+      if (existing?.isFile() && request.mode === "save-to" && request.overwrite === false) {
+        return { ok: false, error: `${target} 已存在` };
+      }
+
+      const backupPath = existing?.isFile() ? await backupFile(target) : undefined;
+      await writeBytesAtomically(target, Buffer.from(request.bytes));
+      this.rememberDigest(target, await digestFile(target));
+      void backupPath;
+      return { ok: true, path: target };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  private digestFor(path: string): string | undefined {
+    return this.openedDigests.get(path);
+  }
+
+  private rememberDigest(path: string, digest: string): void {
+    this.openedDigests.set(path, digest);
+  }
+
+  /** Remember what a document looked like when it was handed to the editor. */
+  private noteOpenedDocument(path: string): void {
+    void digestFile(path)
+      .then((digest) => this.rememberDigest(path, digest))
+      .catch(() => undefined);
   }
 
   /** Re-boot every live view so it picks up the host's current preferences. */
@@ -390,4 +498,50 @@ export function parseViewMenuState(value: unknown): DocumentViewMenuState | unde
   if (typeof state.aiSidebar === "boolean") parsed.aiSidebar = state.aiSidebar;
   if (typeof state.darkCanvas === "boolean") parsed.darkCanvas = state.darkCanvas;
   return Object.keys(parsed).length > 0 ? parsed : undefined;
+}
+
+function parseWriteDocumentRequest(value: unknown): WriteDocumentRequest | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const request = value as Record<string, unknown>;
+  const mode = request.mode;
+  if (mode !== "save" && mode !== "save-as" && mode !== "save-new" && mode !== "save-to") {
+    return undefined;
+  }
+  const bytes = request.bytes;
+  if (!(bytes instanceof Uint8Array) && !(bytes instanceof ArrayBuffer)) return undefined;
+  return {
+    mode,
+    bytes: bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes),
+    ...(typeof request.path === "string" ? { path: request.path } : {}),
+    ...(typeof request.name === "string" ? { name: request.name } : {}),
+    ...(typeof request.sourcePath === "string" ? { sourcePath: request.sourcePath } : {}),
+    ...(typeof request.overwrite === "boolean" ? { overwrite: request.overwrite } : {}),
+  };
+}
+
+async function digestFile(path: string): Promise<string> {
+  const { readFile } = await import("node:fs/promises");
+  return createHash("sha256")
+    .update(await readFile(path))
+    .digest("hex");
+}
+
+/** Keep what was on disk, under a name that says when it was set aside. */
+async function backupFile(path: string): Promise<string> {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupPath = join(dirname(path), `${path.slice(dirname(path).length + 1)}.bak-${stamp}`);
+  await copyFile(path, backupPath);
+  return backupPath;
+}
+
+/** Temp file + rename, so a crash cannot leave a half-written document behind. */
+async function writeBytesAtomically(path: string, bytes: Buffer): Promise<void> {
+  const scratch = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(scratch, bytes);
+    await rename(scratch, path);
+  } catch (error) {
+    await unlink(scratch).catch(() => undefined);
+    throw error;
+  }
 }

@@ -7,4 +7,5 @@ export const DOCUMENT_IPC = {
   consumeAiDocContent: "bid-docs:consume-ai-doc-content",
   reportViewMenuState: "bid-docs:report-view-menu-state",
   aiPanelDefault: "bid-docs:ai-panel-default",
+  writeDocument: "bid-docs:write-document",
 } as const;

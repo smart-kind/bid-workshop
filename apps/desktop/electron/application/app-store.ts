@@ -90,7 +90,8 @@ import {
   writePersistedUiState,
 } from "../persistence/app-store-persistence";
 import { AttachmentStore } from "../persistence/attachment-store";
-import type { WorkspaceProfile } from "../../contracts/business-workspace";
+import { EMPTY_WORKSPACE_ZONES, type WorkspaceProfile } from "../../contracts/business-workspace";
+import { createZoneResolver } from "../../contracts/workspace-zones";
 import { assertWorkspaceWriteAllowed } from "../workspace/write-gate";
 import { writeWorkspaceTextFile } from "../platform/files/app-store-files";
 import {
@@ -908,6 +909,25 @@ export class DesktopAppStore {
       await this.workspaceProfile.write(path, profile);
     }
     return this.workspaceProfile.readBusiness(path);
+  }
+
+  /**
+   * Refuse a document write the workspace's zones do not allow. The editor asks
+   * before it writes; the answer comes from here, not from a disabled control.
+   */
+  async assertWritableDocument(absolutePath: string): Promise<void> {
+    const target = resolve(absolutePath);
+    const owner = this.state.workspaces.find((workspace) => {
+      const root = resolve(workspace.path);
+      return target === root || target.startsWith(`${root}${sep}`);
+    });
+    if (!owner) {
+      throw new Error(`文档不在任何已打开的工作区内：${absolutePath}`);
+    }
+    const profile = await this.workspaceProfile.read(owner.path);
+    const zones =
+      profile.status === "ok" ? profile.zones : createZoneResolver(EMPTY_WORKSPACE_ZONES);
+    zones.assertWritable(target.slice(resolve(owner.path).length + 1));
   }
 
   /**

@@ -1045,6 +1045,19 @@ app
       backgroundThrottling: windowTestMode !== "background",
       onDiagnostic: (message) => console.error("[document-view]", message),
       aiPanelDefault: () => documentAiPanelDefault,
+      // The editor asks; the shell answers. A read-only zone refuses here, and
+      // Save As is the shell's dialog rather than the editor's.
+      assertWritableDocument: (absolutePath) => store.assertWritableDocument(absolutePath),
+      chooseSavePath: async ({ suggestedName, sourcePath }) => {
+        const parent = BrowserWindow.getFocusedWindow() ?? undefined;
+        const result = await dialog.showSaveDialog(parent as BrowserWindow, {
+          defaultPath: sourcePath
+            ? path.join(path.dirname(sourcePath), suggestedName)
+            : suggestedName,
+          filters: [{ name: "Word", extensions: ["docx"] }],
+        });
+        return result.canceled ? undefined : result.filePath;
+      },
       onViewMenuState: (state) => {
         // The view's own chrome decides what the menu shows; the menu decides
         // what the next view starts with.

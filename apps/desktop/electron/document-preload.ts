@@ -83,14 +83,23 @@ const desktop = {
   createDocument: () => Promise.resolve({ ok: false }),
   onOpenDocx: unsubscribe,
   onRenamedDocx: unsubscribe,
-  saveDocx: () => Promise.resolve({ ok: false }),
+  saveDocx: (path: string, bytes: Uint8Array, auto: boolean) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.writeDocument, { mode: "save", path, bytes, auto }),
   writeRecoveryCopy: () => Promise.resolve({ ok: false }),
   onTeardown: unsubscribe,
   respellKick: () => Promise.resolve(),
   spellDiag: noop,
-  saveDocxAs: () => Promise.resolve({ ok: false }),
-  saveDocxNew: () => Promise.resolve({ ok: false }),
-  saveDocxTo: () => Promise.resolve({ ok: false }),
+  saveDocxAs: (name: string, bytes: Uint8Array, sourcePath?: string) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.writeDocument, {
+      mode: "save-as",
+      name,
+      bytes,
+      sourcePath,
+    }),
+  saveDocxNew: (name: string, bytes: Uint8Array) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.writeDocument, { mode: "save-new", name, bytes }),
+  saveDocxTo: (path: string, bytes: Uint8Array, overwrite?: boolean) =>
+    ipcRenderer.invoke(DOCUMENT_IPC.writeDocument, { mode: "save-to", path, bytes, overwrite }),
   getRecentFiles: () => Promise.resolve([]),
   pickImage: () => Promise.resolve(null),
   fontMetrics: () => Promise.resolve(null),
